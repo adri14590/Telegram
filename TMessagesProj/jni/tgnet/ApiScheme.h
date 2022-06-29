@@ -381,7 +381,7 @@ public:
 };
 
 class TL_inputPeerChannelFromMessage : public InputPeer {
-
+    
 public:
     static const uint32_t constructor = 0xbd2a0840;
 
@@ -393,7 +393,7 @@ public:
 };
 
 class TL_inputPeerChannel : public InputPeer {
-
+    
 public:
     static const uint32_t constructor = 0x27bcbbfc;
 
@@ -419,7 +419,7 @@ public:
 };
 
 class TL_inputUserSelf : public InputUser {
-
+    
 public:
     static const uint32_t constructor = 0xf7c1b13f;
 
@@ -436,7 +436,7 @@ public:
 };
 
 class TL_inputUserEmpty : public InputUser {
-
+    
 public:
     static const uint32_t constructor = 0xb98886cf;
 
@@ -479,13 +479,13 @@ class TL_messageEntityBotCommand : public MessageEntity {
 
 public:
     static const uint32_t constructor = 0x6cef8ac7;
-
+    
     void readParams(NativeByteBuffer *stream, int32_t instanceNum, bool &error);
     void serializeToStream(NativeByteBuffer *stream);
 };
 
 class TL_messageEntityEmail : public MessageEntity {
-
+    
 public:
     static const uint32_t constructor = 0x64e475c2;
 
@@ -560,7 +560,7 @@ public:
 };
 
 class TL_messageEntityCashtag : public MessageEntity {
-
+    
 public:
     static const uint32_t constructor = 0x4c4e743f;
 
@@ -596,7 +596,7 @@ public:
 };
 
 class TL_messageEntityStrike : public MessageEntity {
-
+    
 public:
     static const uint32_t constructor = 0xbf0693d4;
 
@@ -623,7 +623,7 @@ public:
 };
 
 class TL_messageEntityPhone : public MessageEntity {
-
+    
 public:
     static const uint32_t constructor = 0x9b69e34b;
 
@@ -679,7 +679,7 @@ public:
 };
 
 class TL_auth_authorization : public auth_Authorization {
-
+    
 public:
     static const uint32_t constructor = 0x33fb7bb8;
 
