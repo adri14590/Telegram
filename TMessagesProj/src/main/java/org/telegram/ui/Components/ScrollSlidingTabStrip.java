@@ -13,7 +13,6 @@ import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
 import android.content.Context;
 import android.graphics.Canvas;
-import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Paint.Style;
 import android.graphics.drawable.Drawable;
@@ -26,7 +25,6 @@ import android.transition.TransitionManager;
 import android.transition.TransitionSet;
 import android.transition.TransitionValues;
 import android.util.SparseArray;
-import android.util.SparseIntArray;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
@@ -52,10 +50,7 @@ import org.telegram.tgnet.TLObject;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.Theme;
 
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Locale;
 
 public class ScrollSlidingTabStrip extends HorizontalScrollView {
 
@@ -98,7 +93,7 @@ public class ScrollSlidingTabStrip extends HorizontalScrollView {
     private int indicatorHeight;
     private GradientDrawable indicatorDrawable = new GradientDrawable();
 
-    private int scrollOffset = AndroidUtilities.dp(52);
+    private int scrollOffset = AndroidUtilities.dp(StickerTabView.SMALL_WIDTH);
     private int underlineHeight = AndroidUtilities.dp(2);
     private int dividerPadding = AndroidUtilities.dp(12);
     private int tabPadding = AndroidUtilities.dp(24);
@@ -168,6 +163,7 @@ public class ScrollSlidingTabStrip extends HorizontalScrollView {
             }
         };
         tabsContainer.setOrientation(LinearLayout.HORIZONTAL);
+        tabsContainer.setPadding(AndroidUtilities.dp(4), 0, AndroidUtilities.dp(4), 0);
         tabsContainer.setLayoutParams(new LayoutParams(LayoutParams.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
         addView(tabsContainer);
 
@@ -175,7 +171,7 @@ public class ScrollSlidingTabStrip extends HorizontalScrollView {
         rectPaint.setAntiAlias(true);
         rectPaint.setStyle(Style.FILL);
 
-        defaultTabLayoutParams = new LinearLayout.LayoutParams(AndroidUtilities.dp(52), LayoutHelper.MATCH_PARENT);
+        defaultTabLayoutParams = new LinearLayout.LayoutParams(AndroidUtilities.dp(StickerTabView.SMALL_WIDTH), LayoutHelper.MATCH_PARENT);
         defaultExpandLayoutParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1.0F);
     }
 
@@ -453,7 +449,7 @@ public class ScrollSlidingTabStrip extends HorizontalScrollView {
     float expandProgress;
 
     private float stickerTabExpandedWidth = AndroidUtilities.dp(86);
-    private float stickerTabWidth = AndroidUtilities.dp(52);
+    private float stickerTabWidth = AndroidUtilities.dp(StickerTabView.SMALL_WIDTH);
     private float expandOffset;
     private int scrollByOnNextMeasure = -1;
 
@@ -531,10 +527,10 @@ public class ScrollSlidingTabStrip extends HorizontalScrollView {
                             if (child instanceof StickerTabView) {
                                 ((StickerTabView) child).setExpanded(false);
                             }
-                            child.getLayoutParams().width = AndroidUtilities.dp(52);
+                            child.getLayoutParams().width = AndroidUtilities.dp(StickerTabView.SMALL_WIDTH);
                         }
                         animateToExpanded = false;
-                        getLayoutParams().height = AndroidUtilities.dp(48);
+                        getLayoutParams().height = AndroidUtilities.dp(StickerTabView.SMALL_HEIGHT);
                         tabsContainer.requestLayout();
                     }
                 }
@@ -552,7 +548,7 @@ public class ScrollSlidingTabStrip extends HorizontalScrollView {
                 }
 
                 tabsContainer.requestLayout();
-                getLayoutParams().height = AndroidUtilities.dp(48 + 50);
+                getLayoutParams().height = AndroidUtilities.dp(StickerTabView.SMALL_HEIGHT + 50);
             }
 
             if (expanded) {
@@ -615,9 +611,9 @@ public class ScrollSlidingTabStrip extends HorizontalScrollView {
     }
 
     public void setImages() {
-        float tabSize = AndroidUtilities.dp( 52) + AndroidUtilities.dp(34) * expandProgress;
+        float tabSize = AndroidUtilities.dp(StickerTabView.SMALL_WIDTH) + AndroidUtilities.dp(86 - StickerTabView.SMALL_WIDTH) * expandProgress;
         float scrollOffset = animateToExpanded ? expandOffset * (1f - expandProgress) : 0;
-        int start = (int) ((getScrollX() - scrollOffset) / tabSize);
+        int start = (int) ((getScrollX() - scrollOffset - tabsContainer.getPaddingLeft()) / tabSize);
         int end = Math.min(tabsContainer.getChildCount(), start + (int) Math.ceil(getMeasuredWidth() / tabSize) + 1);
         if (animateToExpanded) {
             start -= 2;
@@ -647,8 +643,7 @@ public class ScrollSlidingTabStrip extends HorizontalScrollView {
                         thumbDrawable = (Drawable) thumb;
                     }
                     if (sticker instanceof TLRPC.Document) {
-                      //  String.format(Locale.US, "%d_%d_nr_%s" + messageObject.emojiAnimatedStickerColor, w, h, messageObject.toString());
-                        tabView.imageView.setImage(ImageLocation.getForDocument((TLRPC.Document) sticker), "36_36", thumbDrawable, null);
+                        tabView.imageView.setImage(ImageLocation.getForDocument((TLRPC.Document) sticker), "36_36_nolimit", (Drawable) null, null);
                     } else {
                         tabView.imageView.setImageDrawable(thumbDrawable);
                     }
@@ -681,7 +676,13 @@ public class ScrollSlidingTabStrip extends HorizontalScrollView {
                     tabView.inited = true;
                     SvgHelper.SvgDrawable svgThumb = tabView.svgThumb;
                     BackupImageView imageView = tabView.imageView;
-                    if (object instanceof TLRPC.Document && MessageObject.isAnimatedStickerDocument(sticker, true)) {
+                    if (object instanceof TLRPC.Document && MessageObject.isVideoSticker(sticker)) {
+                        if (svgThumb != null) {
+                            imageView.setImage(ImageLocation.getForDocument(sticker), "40_40", svgThumb, 0, parentObject);
+                        } else {
+                            imageView.setImage(ImageLocation.getForDocument(sticker), "40_40", imageLocation, null, 0, parentObject);
+                        }
+                    } else if (object instanceof TLRPC.Document && MessageObject.isAnimatedStickerDocument(sticker, true)) {
                         if (svgThumb != null) {
                             imageView.setImage(ImageLocation.getForDocument(sticker), "40_40", svgThumb, 0, parentObject);
                         } else {
@@ -712,7 +713,7 @@ public class ScrollSlidingTabStrip extends HorizontalScrollView {
     }
 
     private int getTabSize() {
-        return AndroidUtilities.dp(animateToExpanded ? 86 : 52);
+        return AndroidUtilities.dp(animateToExpanded ? 86 : StickerTabView.SMALL_WIDTH);
     }
 
     @Override

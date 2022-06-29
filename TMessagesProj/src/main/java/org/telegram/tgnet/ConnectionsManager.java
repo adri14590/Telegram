@@ -16,9 +16,9 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 import org.telegram.messenger.AccountInstance;
 import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.BaseController;
 import org.telegram.messenger.BuildVars;
-import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.EmuDetector;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.KeepAliveJob;
@@ -115,10 +115,19 @@ public class ConnectionsManager extends BaseController {
         }
     };
 
+    private boolean forceTryIpV6;
+
     static {
         ThreadPoolExecutor threadPoolExecutor = new ThreadPoolExecutor(CORE_POOL_SIZE, MAXIMUM_POOL_SIZE, KEEP_ALIVE_SECONDS, TimeUnit.SECONDS, sPoolWorkQueue, sThreadFactory);
         threadPoolExecutor.allowCoreThreadTimeOut(true);
         DNS_THREAD_POOL_EXECUTOR = threadPoolExecutor;
+    }
+
+    public void setForceTryIpV6(boolean forceTryIpV6) {
+        if (this.forceTryIpV6 != forceTryIpV6) {
+            this.forceTryIpV6 = forceTryIpV6;
+            checkConnection();
+        }
     }
 
     private static class ResolvedDomain {
@@ -140,7 +149,7 @@ public class ConnectionsManager extends BaseController {
 
     private static int lastClassGuid = 1;
     
-    private static volatile ConnectionsManager[] Instance = new ConnectionsManager[UserConfig.MAX_ACCOUNT_COUNT];
+    private static final ConnectionsManager[] Instance = new ConnectionsManager[UserConfig.MAX_ACCOUNT_COUNT];
     public static ConnectionsManager getInstance(int num) {
         ConnectionsManager localInstance = Instance[num];
         if (localInstance == null) {
@@ -205,7 +214,13 @@ public class ConnectionsManager extends BaseController {
         String fingerprint = AndroidUtilities.getCertificateSHA256Fingerprint();
 
         int timezoneOffset = (TimeZone.getDefault().getRawOffset() + TimeZone.getDefault().getDSTSavings()) / 1000;
-
+        SharedPreferences mainPreferences;
+        if (currentAccount == 0) {
+            mainPreferences = ApplicationLoader.applicationContext.getSharedPreferences("mainconfig", Activity.MODE_PRIVATE);
+        } else {
+            mainPreferences = ApplicationLoader.applicationContext.getSharedPreferences("mainconfig" + currentAccount, Activity.MODE_PRIVATE);
+        }
+        forceTryIpV6 = mainPreferences.getBoolean("forceTryIpV6", false);
         init(BuildVars.BUILD_VERSION, TLRPC.LAYER, BuildVars.APP_ID, deviceModel, systemVersion, appVersion, langCode, systemLangCode, configPath, FileLog.getNetworkLogPath(), pushString, fingerprint, timezoneOffset, getUserConfig().getClientUserId(), enablePushConnection);
     }
 
@@ -743,7 +758,7 @@ public class ConnectionsManager extends BaseController {
     }
 
     @SuppressLint("NewApi")
-    protected static byte getIpStrategy() {
+    protected byte getIpStrategy() {
         if (Build.VERSION.SDK_INT < 19) {
             return USE_IPV4_ONLY;
         }
@@ -809,6 +824,9 @@ public class ConnectionsManager extends BaseController {
                 }
             }
             if (hasIpv6) {
+                if (forceTryIpV6) {
+                    return USE_IPV6_ONLY;
+                }
                 if (hasStrangeIpv4) {
                     return USE_IPV4_IPV6_RANDOM;
                 }
@@ -882,14 +900,14 @@ public class ConnectionsManager extends BaseController {
                 }
                 done = true;
             } catch (Throwable e) {
-                FileLog.e(e);
+                FileLog.e(e, false);
             } finally {
                 try {
                     if (httpConnectionStream != null) {
                         httpConnectionStream.close();
                     }
                 } catch (Throwable e) {
-                    FileLog.e(e);
+                    FileLog.e(e, false);
                 }
                 try {
                     if (outbuf != null) {
@@ -906,7 +924,7 @@ public class ConnectionsManager extends BaseController {
                     addresses.add(address.getHostAddress());
                     return new ResolvedDomain(addresses, SystemClock.elapsedRealtime());
                 } catch (Exception e) {
-                    FileLog.e(e);
+                    FileLog.e(e, false);
                 }
             }
             return null;
@@ -1017,14 +1035,14 @@ public class ConnectionsManager extends BaseController {
                     buffer.writeBytes(bytes);
                     return buffer;
                 } catch (Throwable e) {
-                    FileLog.e(e);
+                    FileLog.e(e, false);
                 } finally {
                     try {
                         if (httpConnectionStream != null) {
                             httpConnectionStream.close();
                         }
                     } catch (Throwable e) {
-                        FileLog.e(e);
+                        FileLog.e(e, false);
                     }
                     try {
                         if (outbuf != null) {

@@ -26,7 +26,6 @@ import org.telegram.messenger.BuildVars;
 import org.telegram.messenger.CustomTabsCopyReceiver;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.LocaleController;
-import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
 import org.telegram.messenger.ShareBroadcastReceiver;
@@ -172,10 +171,21 @@ public class Browser {
     }
 
     public static boolean isTelegraphUrl(String url, boolean equals) {
+        return isTelegraphUrl(url, equals, false);
+    }
+    public static boolean isTelegraphUrl(String url, boolean equals, boolean forceHttps) {
         if (equals) {
             return url.equals("telegra.ph") || url.equals("te.legra.ph") || url.equals("graph.org");
         }
-        return url.contains("telegra.ph") || url.contains("te.legra.ph") || url.contains("graph.org");
+        return url.matches("^(https" + (forceHttps ? "" : "?") + "://)?(te\\.?legra\\.ph|graph\\.org).*"); // telegra.ph, te.legra.ph, graph.org
+    }
+
+    public static boolean urlMustNotHaveConfirmation(String url) {
+        return (
+            isTelegraphUrl(url, false, true) ||
+            url.matches("^(https://)?t\\.me/iv\\??.*") || // t.me/iv?
+            url.matches("^(https://)?telegram\\.org/(blog|tour)/?.*") // telegram.org/blog, telegram.org/tour
+        );
     }
 
     public static void openUrl(final Context context, Uri uri, final boolean allowCustom, boolean tryTelegraph) {
@@ -318,7 +328,7 @@ public class Browser {
 
                     builder.setToolbarColor(Theme.getColor(Theme.key_actionBarBrowser));
                     builder.setShowTitle(true);
-                    builder.setActionButton(BitmapFactory.decodeResource(context.getResources(), R.drawable.abc_ic_menu_share_mtrl_alpha), LocaleController.getString("ShareFile", R.string.ShareFile), PendingIntent.getBroadcast(ApplicationLoader.applicationContext, 0, share, 0), true);
+                    builder.setActionButton(BitmapFactory.decodeResource(context.getResources(), R.drawable.msg_filled_shareout), LocaleController.getString("ShareFile", R.string.ShareFile), PendingIntent.getBroadcast(ApplicationLoader.applicationContext, 0, share, 0), true);
                     CustomTabsIntent intent = builder.build();
                     intent.setUseNewTask();
                     intent.launchUrl(context, uri);

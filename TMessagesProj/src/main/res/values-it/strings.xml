@@ -2494,7 +2494,6 @@
     <string name="FilterChatRemovedFrom">**%1$s** rimossa da **%2$s**</string>
     <string name="FilterChatsRemovedFrom">**%1$s** rimosse da **%2$s**</string>
     <string name="FilterAddToAlertFullTitle">Limite raggiunto</string>
-    <string name="FilterRemoveFromAlertFullText">Spiacenti, non puoi aggiungere più di 100 chat a una cartella.</string>
     <string name="FilterAddToAlertFullText">Spiacenti, non puoi escludere più di 100 chat da una cartella.</string>
     <!--passcode view-->
     <string name="Passcode">Codice di blocco</string>
@@ -3167,7 +3166,7 @@
     <string name="InvalidLastName">Spiacenti, questo cognome non può essere usato</string>
     <string name="Loading">Carico...</string>
     <string name="NoPlayerInstalled">Non hai un lettore video, per favore installane uno per continuare</string>
-    <string name="NoMailInstalled">Per favore invia un’email descrivendo il problema a reports@stel.com</string>
+    <string name="NoMailInstalled">Per favore invia un’email descrivendo il problema a sms@telegram.org</string>
     <string name="NoHandleAppInstalled">Non hai applicazioni che possono gestire il tipo di file \'%1$s\': installane una per proseguire</string>
     <string name="InviteUser">Questo utente non ha ancora Telegram, vuoi invitarlo?</string>
     <string name="AreYouSure">Sei sicuro?</string>

@@ -2,8 +2,6 @@ package org.telegram.ui.Cells;
 
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
-import android.animation.AnimatorSet;
-import android.animation.ObjectAnimator;
 import android.animation.ValueAnimator;
 import android.content.Context;
 import android.graphics.Canvas;
@@ -15,13 +13,10 @@ import android.text.StaticLayout;
 import android.text.TextPaint;
 import android.text.TextUtils;
 import android.util.SparseArray;
-import android.view.Gravity;
 import android.view.View;
 
 import androidx.core.content.ContextCompat;
 import androidx.core.graphics.ColorUtils;
-
-import com.google.android.exoplayer2.util.Log;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.DownloadController;
@@ -33,10 +28,8 @@ import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.R;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.Theme;
-import org.telegram.ui.Components.CheckBox2;
 import org.telegram.ui.Components.CheckBoxBase;
 import org.telegram.ui.Components.FlickerLoadingView;
-import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.PhotoViewer;
 
 public class SharedPhotoVideoCell2 extends View {
@@ -166,7 +159,8 @@ public class SharedPhotoVideoCell2 extends View {
                 if (messageObject.strippedThumb != null) {
                     imageReceiver.setImage(null, null, null, null, messageObject.strippedThumb, 0, null, messageObject, 0);
                 } else {
-                    imageReceiver.clearImage();
+                    TLRPC.PhotoSize currentPhotoObjectThumb = FileLoader.getClosestPhotoSizeWithSize(messageObject.photoThumbs, 50);
+                    imageReceiver.setImage(null, null, ImageLocation.getForObject(currentPhotoObjectThumb, messageObject.photoThumbsObject), "b", null, 0, null, messageObject, 0);
                 }
             }
         } else {
@@ -446,13 +440,13 @@ public class SharedPhotoVideoCell2 extends View {
         Paint highlightPaint = new Paint();
         SparseArray<String> imageFilters = new SparseArray<>();
 
-        public SharedResources(Context context) {
+        public SharedResources(Context context, Theme.ResourcesProvider resourcesProvider) {
             textPaint.setTextSize(AndroidUtilities.dp(12));
             textPaint.setColor(Color.WHITE);
             textPaint.setTypeface(AndroidUtilities.getTypeface("fonts/rmedium.ttf"));
             playDrawable = ContextCompat.getDrawable(context, R.drawable.play_mini_video);
             playDrawable.setBounds(0, 0, playDrawable.getIntrinsicWidth(), playDrawable.getIntrinsicHeight());
-            backgroundPaint.setColor(Theme.getColor(Theme.key_sharedMedia_photoPlaceholder));
+            backgroundPaint.setColor(Theme.getColor(Theme.key_sharedMedia_photoPlaceholder, resourcesProvider));
         }
 
         public String getFilterString(int width) {

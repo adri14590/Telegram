@@ -102,6 +102,7 @@ public class SvgHelper {
 
         protected ArrayList<Object> commands = new ArrayList<>();
         protected HashMap<Object, Paint> paints = new HashMap<>();
+        private Paint overridePaint;
         protected int width;
         protected int height;
         private static int[] parentPosition = new int[2];
@@ -142,16 +143,13 @@ public class SvgHelper {
             height = h;
         }
 
-
         @Override
         public void draw(Canvas canvas) {
             if (currentColorKey != null) {
                 setupGradient(currentColorKey, colorAlpha);
             }
             Rect bounds = getBounds();
-            float scaleX = bounds.width() / (float) width;
-            float scaleY = bounds.height() / (float) height;
-            float scale = aspectFill ? Math.max(scaleX, scaleY) : Math.min(scaleX, scaleY);
+            float scale = getScale();
             canvas.save();
             canvas.translate(bounds.left, bounds.top);
             if (!aspectFill) {
@@ -166,7 +164,12 @@ public class SvgHelper {
                 } else if (object == null) {
                     canvas.restore();
                 } else {
-                    Paint paint = paints.get(object);
+                    Paint paint;
+                    if (overridePaint != null) {
+                        paint = overridePaint;
+                    } else {
+                        paint = paints.get(object);
+                    }
                     int originalAlpha = paint.getAlpha();
                     paint.setAlpha((int) (crossfadeAlpha * originalAlpha));
                     if (object instanceof Path) {
@@ -221,6 +224,13 @@ public class SvgHelper {
                     parentImageReceiver.invalidate();
                 }
             }
+        }
+
+        public float getScale() {
+            Rect bounds = getBounds();
+            float scaleX = bounds.width() / (float) width;
+            float scaleY = bounds.height() / (float) height;
+            return aspectFill ? Math.max(scaleX, scaleY) : Math.min(scaleX, scaleY);
         }
 
         @Override
@@ -284,14 +294,22 @@ public class SvgHelper {
                 }
             }
         }
+
+        public void setPaint(Paint paint) {
+            overridePaint = paint;
+        }
     }
 
     public static Bitmap getBitmap(int res, int width, int height, int color) {
+        return getBitmap(res, width, height, color, 1f);
+    }
+
+    public static Bitmap getBitmap(int res, int width, int height, int color, float scale) {
         try (InputStream stream = ApplicationLoader.applicationContext.getResources().openRawResource(res)) {
             SAXParserFactory spf = SAXParserFactory.newInstance();
             SAXParser sp = spf.newSAXParser();
             XMLReader xr = sp.getXMLReader();
-            SVGHandler handler = new SVGHandler(width, height, color, false);
+            SVGHandler handler = new SVGHandler(width, height, color, false, scale);
             xr.setContentHandler(handler);
             xr.parse(new InputSource(stream));
             return handler.getBitmap();
@@ -306,7 +324,7 @@ public class SvgHelper {
             SAXParserFactory spf = SAXParserFactory.newInstance();
             SAXParser sp = spf.newSAXParser();
             XMLReader xr = sp.getXMLReader();
-            SVGHandler handler = new SVGHandler(width, height, white ? 0xffffffff : null, false);
+            SVGHandler handler = new SVGHandler(width, height, white ? 0xffffffff : null, false, 1f);
             xr.setContentHandler(handler);
             xr.parse(new InputSource(stream));
             return handler.getBitmap();
@@ -321,7 +339,7 @@ public class SvgHelper {
             SAXParserFactory spf = SAXParserFactory.newInstance();
             SAXParser sp = spf.newSAXParser();
             XMLReader xr = sp.getXMLReader();
-            SVGHandler handler = new SVGHandler(width, height, white ? 0xffffffff : null, false);
+            SVGHandler handler = new SVGHandler(width, height, white ? 0xffffffff : null, false, 1f);
             xr.setContentHandler(handler);
             xr.parse(new InputSource(new StringReader(xml)));
             return handler.getBitmap();
@@ -336,7 +354,7 @@ public class SvgHelper {
             SAXParserFactory spf = SAXParserFactory.newInstance();
             SAXParser sp = spf.newSAXParser();
             XMLReader xr = sp.getXMLReader();
-            SVGHandler handler = new SVGHandler(0, 0, null, true);
+            SVGHandler handler = new SVGHandler(0, 0, null, true, 1f);
             xr.setContentHandler(handler);
             xr.parse(new InputSource(new StringReader(xml)));
             return handler.getDrawable();
@@ -351,7 +369,7 @@ public class SvgHelper {
             SAXParserFactory spf = SAXParserFactory.newInstance();
             SAXParser sp = spf.newSAXParser();
             XMLReader xr = sp.getXMLReader();
-            SVGHandler handler = new SVGHandler(0, 0, color, true);
+            SVGHandler handler = new SVGHandler(0, 0, color, true, 1f);
             xr.setContentHandler(handler);
             xr.parse(new InputSource(ApplicationLoader.applicationContext.getResources().openRawResource(resId)));
             return handler.getDrawable();
@@ -948,12 +966,14 @@ public class SvgHelper {
         private RectF rect = new RectF();
         private RectF rectTmp = new RectF();
         private Integer paintColor;
+        private float globalScale = 1f;
 
         boolean pushed = false;
 
         private HashMap<String, StyleSet> globalStyles = new HashMap<>();
 
-        private SVGHandler(int dw, int dh, Integer color, boolean asDrawable) {
+        private SVGHandler(int dw, int dh, Integer color, boolean asDrawable, float scale) {
+            globalScale = scale;
             desiredWidth = dw;
             desiredHeight = dh;
             paintColor = color;
@@ -1114,7 +1134,7 @@ public class SvgHelper {
                         bitmap.eraseColor(0);
                         canvas = new Canvas(bitmap);
                         if (scale != 0) {
-                            canvas.scale(scale, scale);
+                            canvas.scale(globalScale * scale, globalScale * scale);
                         }
                     } else {
                         drawable.width = width;

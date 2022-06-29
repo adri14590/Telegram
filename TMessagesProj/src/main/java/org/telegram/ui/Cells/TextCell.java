@@ -23,6 +23,7 @@ import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.LocaleController;
 import org.telegram.ui.ActionBar.SimpleTextView;
 import org.telegram.ui.ActionBar.Theme;
+import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.RLottieDrawable;
 import org.telegram.ui.Components.RLottieImageView;
 
@@ -37,25 +38,36 @@ public class TextCell extends FrameLayout {
     private int offsetFromImage = 71;
     public int imageLeft = 21;
     private boolean inDialogs;
+    private boolean prioritizeTitleOverValue;
+    private Theme.ResourcesProvider resourcesProvider;
 
     public TextCell(Context context) {
-        this(context, 23, false);
+        this(context, 23, false, null);
+    }
+
+    public TextCell(Context context, Theme.ResourcesProvider resourcesProvider) {
+        this(context, 23, false, resourcesProvider);
     }
 
     public TextCell(Context context, int left, boolean dialog) {
+        this(context, left, dialog, null);
+    }
+
+    public TextCell(Context context, int left, boolean dialog, Theme.ResourcesProvider resourcesProvider) {
         super(context);
 
+        this.resourcesProvider = resourcesProvider;
         leftPadding = left;
 
         textView = new SimpleTextView(context);
-        textView.setTextColor(Theme.getColor(dialog ? Theme.key_dialogTextBlack : Theme.key_windowBackgroundWhiteBlackText));
+        textView.setTextColor(Theme.getColor(dialog ? Theme.key_dialogTextBlack : Theme.key_windowBackgroundWhiteBlackText, resourcesProvider));
         textView.setTextSize(16);
         textView.setGravity(LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT);
         textView.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
-        addView(textView);
+        addView(textView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.MATCH_PARENT));
 
         valueTextView = new SimpleTextView(context);
-        valueTextView.setTextColor(Theme.getColor(dialog ? Theme.key_dialogTextBlue2 : Theme.key_windowBackgroundWhiteValueText));
+        valueTextView.setTextColor(Theme.getColor(dialog ? Theme.key_dialogTextBlue2 : Theme.key_windowBackgroundWhiteValueText, resourcesProvider));
         valueTextView.setTextSize(16);
         valueTextView.setGravity(LocaleController.isRTL ? Gravity.LEFT : Gravity.RIGHT);
         valueTextView.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
@@ -63,7 +75,7 @@ public class TextCell extends FrameLayout {
 
         imageView = new RLottieImageView(context);
         imageView.setScaleType(ImageView.ScaleType.CENTER);
-        imageView.setColorFilter(new PorterDuffColorFilter(Theme.getColor(dialog ? Theme.key_dialogIcon : Theme.key_windowBackgroundWhiteGrayIcon), PorterDuff.Mode.MULTIPLY));
+        imageView.setColorFilter(new PorterDuffColorFilter(Theme.getColor(dialog ? Theme.key_dialogIcon : Theme.key_windowBackgroundWhiteGrayIcon, resourcesProvider), PorterDuff.Mode.MULTIPLY));
         addView(imageView);
 
         valueImageView = new ImageView(context);
@@ -93,13 +105,23 @@ public class TextCell extends FrameLayout {
         return valueImageView;
     }
 
+    public void setPrioritizeTitleOverValue(boolean prioritizeTitleOverValue) {
+        this.prioritizeTitleOverValue = prioritizeTitleOverValue;
+        requestLayout();
+    }
+
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
         int width = MeasureSpec.getSize(widthMeasureSpec);
         int height = AndroidUtilities.dp(48);
 
-        valueTextView.measure(MeasureSpec.makeMeasureSpec(width - AndroidUtilities.dp(leftPadding), MeasureSpec.AT_MOST), MeasureSpec.makeMeasureSpec(AndroidUtilities.dp(20), MeasureSpec.EXACTLY));
-        textView.measure(MeasureSpec.makeMeasureSpec(width - AndroidUtilities.dp(71 + leftPadding) - valueTextView.getTextWidth(), MeasureSpec.AT_MOST), MeasureSpec.makeMeasureSpec(AndroidUtilities.dp(20), MeasureSpec.EXACTLY));
+        if (prioritizeTitleOverValue) {
+            textView.measure(MeasureSpec.makeMeasureSpec(width - AndroidUtilities.dp(71 + leftPadding), MeasureSpec.AT_MOST), MeasureSpec.makeMeasureSpec(AndroidUtilities.dp(20), MeasureSpec.EXACTLY));
+            valueTextView.measure(MeasureSpec.makeMeasureSpec(width - AndroidUtilities.dp(103 + leftPadding) - textView.getTextWidth(), MeasureSpec.AT_MOST), MeasureSpec.makeMeasureSpec(AndroidUtilities.dp(20), MeasureSpec.EXACTLY));
+        } else {
+            valueTextView.measure(MeasureSpec.makeMeasureSpec(width - AndroidUtilities.dp(leftPadding), MeasureSpec.AT_MOST), MeasureSpec.makeMeasureSpec(AndroidUtilities.dp(20), MeasureSpec.EXACTLY));
+            textView.measure(MeasureSpec.makeMeasureSpec(width - AndroidUtilities.dp(71 + leftPadding) - valueTextView.getTextWidth(), MeasureSpec.AT_MOST), MeasureSpec.makeMeasureSpec(AndroidUtilities.dp(20), MeasureSpec.EXACTLY));
+        }
         if (imageView.getVisibility() == VISIBLE) {
             imageView.measure(MeasureSpec.makeMeasureSpec(width, MeasureSpec.AT_MOST), MeasureSpec.makeMeasureSpec(height, MeasureSpec.AT_MOST));
         }
@@ -116,6 +138,9 @@ public class TextCell extends FrameLayout {
 
         int viewTop = (height - valueTextView.getTextHeight()) / 2;
         int viewLeft = LocaleController.isRTL ? AndroidUtilities.dp(leftPadding) : 0;
+        if (prioritizeTitleOverValue && !LocaleController.isRTL) {
+             viewLeft = width - valueTextView.getMeasuredWidth() - AndroidUtilities.dp(leftPadding);
+        }
         valueTextView.layout(viewLeft, viewTop, viewLeft + valueTextView.getMeasuredWidth(), viewTop + valueTextView.getMeasuredHeight());
 
         viewTop = (height - textView.getTextHeight()) / 2;
@@ -144,15 +169,16 @@ public class TextCell extends FrameLayout {
     }
 
     public void setColors(String icon, String text) {
-        textView.setTextColor(Theme.getColor(text));
+        textView.setTextColor(Theme.getColor(text, resourcesProvider));
         textView.setTag(text);
         if (icon != null) {
-            imageView.setColorFilter(new PorterDuffColorFilter(Theme.getColor(icon), PorterDuff.Mode.MULTIPLY));
+            imageView.setColorFilter(new PorterDuffColorFilter(Theme.getColor(icon, resourcesProvider), PorterDuff.Mode.MULTIPLY));
             imageView.setTag(icon);
         }
     }
 
     public void setText(String text, boolean divider) {
+        imageLeft = 21;
         textView.setText(text);
         valueTextView.setText(null);
         imageView.setVisibility(GONE);
@@ -163,6 +189,8 @@ public class TextCell extends FrameLayout {
     }
 
     public void setTextAndIcon(String text, int resId, boolean divider) {
+        imageLeft = 21;
+        offsetFromImage = 71;
         textView.setText(text);
         valueTextView.setText(null);
         imageView.setImageResource(resId);
@@ -197,7 +225,13 @@ public class TextCell extends FrameLayout {
         offsetFromImage = value;
     }
 
+    public void setImageLeft(int imageLeft) {
+        this.imageLeft = imageLeft;
+    }
+
     public void setTextAndValue(String text, String value, boolean divider) {
+        imageLeft = 21;
+        offsetFromImage = 71;
         textView.setText(text);
         valueTextView.setText(value);
         valueTextView.setVisibility(VISIBLE);
@@ -208,6 +242,8 @@ public class TextCell extends FrameLayout {
     }
 
     public void setTextAndValueAndIcon(String text, String value, int resId, boolean divider) {
+        imageLeft = 21;
+        offsetFromImage = 71;
         textView.setText(text);
         valueTextView.setText(value);
         valueTextView.setVisibility(VISIBLE);
@@ -220,6 +256,8 @@ public class TextCell extends FrameLayout {
     }
 
     public void setTextAndValueDrawable(String text, Drawable drawable, boolean divider) {
+        imageLeft = 21;
+        offsetFromImage = 71;
         textView.setText(text);
         valueTextView.setText(null);
         valueImageView.setVisibility(VISIBLE);
@@ -250,6 +288,7 @@ public class TextCell extends FrameLayout {
                 info.setText(text);
             }
         }
+        info.addAction(AccessibilityNodeInfo.ACTION_CLICK);
     }
 
     public void setNeedDivider(boolean needDivider) {

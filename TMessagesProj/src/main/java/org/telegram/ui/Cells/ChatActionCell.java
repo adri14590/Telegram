@@ -14,14 +14,20 @@ import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.RectF;
+import android.os.Build;
 import android.text.Layout;
 import android.text.Spannable;
+import android.text.SpannableStringBuilder;
+import android.text.Spanned;
 import android.text.StaticLayout;
 import android.text.TextPaint;
 import android.text.TextUtils;
+import android.text.style.CharacterStyle;
+import android.text.style.ClickableSpan;
 import android.text.style.URLSpan;
 import android.view.MotionEvent;
 import android.view.SoundEffectConstants;
+import android.view.View;
 import android.view.ViewGroup;
 import android.view.accessibility.AccessibilityNodeInfo;
 
@@ -34,6 +40,7 @@ import org.telegram.messenger.ImageLocation;
 import org.telegram.messenger.ImageReceiver;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MessageObject;
+import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
 import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.UserConfig;
@@ -43,11 +50,29 @@ import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Components.AvatarDrawable;
 import org.telegram.ui.Components.URLSpanNoUnderline;
+import org.telegram.ui.Components.spoilers.SpoilerEffect;
 import org.telegram.ui.PhotoViewer;
 
+import java.lang.ref.WeakReference;
 import java.util.ArrayList;
+import java.util.List;
+import java.util.Stack;
 
-public class ChatActionCell extends BaseCell implements DownloadController.FileDownloadProgressListener {
+public class ChatActionCell extends BaseCell implements DownloadController.FileDownloadProgressListener, NotificationCenter.NotificationCenterDelegate {
+
+    @Override
+    public void didReceivedNotification(int id, int account, Object... args) {
+        if (id == NotificationCenter.startSpoilers) {
+            setSpoilersSuppressed(false);
+        } else if (id == NotificationCenter.stopSpoilers) {
+            setSpoilersSuppressed(true);
+        }
+    }
+
+    public void setSpoilersSuppressed(boolean s) {
+        for (SpoilerEffect eff : spoilers)
+            eff.setSuppressUpdates(s);
+    }
 
     private boolean canDrawInParent;
 
@@ -55,7 +80,8 @@ public class ChatActionCell extends BaseCell implements DownloadController.FileD
         default void didClickImage(ChatActionCell cell) {
         }
 
-        default void didLongPress(ChatActionCell cell, float x, float y) {
+        default boolean didLongPress(ChatActionCell cell, float x, float y) {
+            return false;
         }
 
         default void needOpenUserProfile(long uid) {
@@ -91,6 +117,9 @@ public class ChatActionCell extends BaseCell implements DownloadController.FileD
     private int textXLeft;
     private int previousWidth;
     private boolean imagePressed;
+
+    public List<SpoilerEffect> spoilers = new ArrayList<>();
+    private Stack<SpoilerEffect> spoilersPool = new Stack<>();
 
     TextPaint textPaint;
 
@@ -158,11 +187,12 @@ public class ChatActionCell extends BaseCell implements DownloadController.FileD
         } else {
             newText = LocaleController.formatDateChat(date);
         }
+        customDate = date;
         if (customText != null && TextUtils.equals(newText, customText)) {
             return;
         }
-        customDate = date;
         customText = newText;
+        accessibilityText = null;
         updateTextInternal(inLayout);
     }
 
@@ -198,7 +228,11 @@ public class ChatActionCell extends BaseCell implements DownloadController.FileD
         if (currentMessageObject == messageObject && (textLayout == null || TextUtils.equals(textLayout.getText(), messageObject.messageText)) && (hasReplyMessage || messageObject.replyMessageObject == null)) {
             return;
         }
+        accessibilityText = null;
         currentMessageObject = messageObject;
+        if (currentMessageObject != null && currentMessageObject.viewRef != null && (currentMessageObject.viewRef.get() == null || currentMessageObject.viewRef.get().get() != this)) {
+            currentMessageObject.viewRef.set(new WeakReference<>(this));
+        }
         hasReplyMessage = messageObject.replyMessageObject != null;
         DownloadController.getInstance(currentAccount).removeLoadingFileObserver(this);
         previousWidth = 0;
@@ -262,9 +296,9 @@ public class ChatActionCell extends BaseCell implements DownloadController.FileD
     @Override
     protected boolean onLongPress() {
         if (delegate != null) {
-            delegate.didLongPress(this, lastTouchX, lastTouchY);
+            return delegate.didLongPress(this, lastTouchX, lastTouchY);
         }
-        return true;
+        return false;
     }
 
     @Override
@@ -344,43 +378,7 @@ public class ChatActionCell extends BaseCell implements DownloadController.FileD
                                 result = true;
                             } else {
                                 if (link[0] == pressedLink) {
-                                    if (delegate != null) {
-                                        String url = link[0].getURL();
-                                        if (url.startsWith("invite") && pressedLink instanceof URLSpanNoUnderline) {
-                                            URLSpanNoUnderline spanNoUnderline = (URLSpanNoUnderline) pressedLink;
-                                            TLObject object = spanNoUnderline.getObject();
-                                            if (object instanceof TLRPC.TL_chatInviteExported) {
-                                                TLRPC.TL_chatInviteExported invite = (TLRPC.TL_chatInviteExported) object;
-                                                delegate.needOpenInviteLink(invite);
-                                            }
-                                        } else if (url.startsWith("game")) {
-                                            delegate.didPressReplyMessage(this, currentMessageObject.getReplyMsgId());
-                                            /*TLRPC.KeyboardButton gameButton = null;
-                                            MessageObject messageObject = currentMessageObject.replyMessageObject;
-                                            if (messageObject != null && messageObject.messageOwner.reply_markup != null) {
-                                                for (int a = 0; a < messageObject.messageOwner.reply_markup.rows.size(); a++) {
-                                                    TLRPC.TL_keyboardButtonRow row = messageObject.messageOwner.reply_markup.rows.get(a);
-                                                    for (int b = 0; b < row.buttons.size(); b++) {
-                                                        TLRPC.KeyboardButton button = row.buttons.get(b);
-                                                        if (button instanceof TLRPC.TL_keyboardButtonGame && button.game_id == currentMessageObject.messageOwner.action.game_id) {
-                                                            gameButton = button;
-                                                            break;
-                                                        }
-                                                    }
-                                                    if (gameButton != null) {
-                                                        break;
-                                                    }
-                                                }
-                                            }
-                                            if (gameButton != null) {
-                                                delegate.didPressBotButton(messageObject, gameButton);
-                                            }*/
-                                        } else if (url.startsWith("http")) {
-                                            Browser.openUrl(getContext(), url);
-                                        } else {
-                                            delegate.needOpenUserProfile(Integer.parseInt(url));
-                                        }
-                                    }
+                                    openLink(pressedLink);
                                     result = true;
                                 }
                             }
@@ -403,10 +401,56 @@ public class ChatActionCell extends BaseCell implements DownloadController.FileD
         return result;
     }
 
+    private void openLink(CharacterStyle link) {
+        if (delegate != null && link instanceof URLSpan) {
+            String url = ((URLSpan) link).getURL();
+            if (url.startsWith("invite") && pressedLink instanceof URLSpanNoUnderline) {
+                URLSpanNoUnderline spanNoUnderline = (URLSpanNoUnderline) pressedLink;
+                TLObject object = spanNoUnderline.getObject();
+                if (object instanceof TLRPC.TL_chatInviteExported) {
+                    TLRPC.TL_chatInviteExported invite = (TLRPC.TL_chatInviteExported) object;
+                    delegate.needOpenInviteLink(invite);
+                }
+            } else if (url.startsWith("game")) {
+                delegate.didPressReplyMessage(this, currentMessageObject.getReplyMsgId());
+                /*TLRPC.KeyboardButton gameButton = null;
+                MessageObject messageObject = currentMessageObject.replyMessageObject;
+                if (messageObject != null && messageObject.messageOwner.reply_markup != null) {
+                    for (int a = 0; a < messageObject.messageOwner.reply_markup.rows.size(); a++) {
+                        TLRPC.TL_keyboardButtonRow row = messageObject.messageOwner.reply_markup.rows.get(a);
+                        for (int b = 0; b < row.buttons.size(); b++) {
+                            TLRPC.KeyboardButton button = row.buttons.get(b);
+                            if (button instanceof TLRPC.TL_keyboardButtonGame && button.game_id == currentMessageObject.messageOwner.action.game_id) {
+                                gameButton = button;
+                                break;
+                            }
+                        }
+                        if (gameButton != null) {
+                            break;
+                        }
+                    }
+                }
+                if (gameButton != null) {
+                    delegate.didPressBotButton(messageObject, gameButton);
+                }*/
+            } else if (url.startsWith("http")) {
+                Browser.openUrl(getContext(), url);
+            } else {
+                delegate.needOpenUserProfile(Long.parseLong(url));
+            }
+        }
+    }
+
     private void createLayout(CharSequence text, int width) {
         int maxWidth = width - AndroidUtilities.dp(30);
         invalidatePath = true;
         textLayout = new StaticLayout(text, (TextPaint) getThemedPaint(Theme.key_paint_chatActionText), maxWidth, Layout.Alignment.ALIGN_CENTER, 1.0f, 0.0f, false);
+
+        spoilersPool.addAll(spoilers);
+        spoilers.clear();
+        if (text instanceof Spannable)
+            SpoilerEffect.addSpoilers(this, textLayout, (Spannable) text, spoilersPool, spoilers);
+
         textHeight = 0;
         textWidth = 0;
         try {
@@ -494,7 +538,16 @@ public class ChatActionCell extends BaseCell implements DownloadController.FileD
             if (textLayout.getPaint() != textPaint) {
                 buildLayout();
             }
+            canvas.save();
+            SpoilerEffect.clipOutCanvas(canvas, spoilers);
             textLayout.draw(canvas);
+            canvas.restore();
+
+            for (SpoilerEffect eff : spoilers) {
+                eff.setColor(textLayout.getPaint().getColor());
+                eff.draw(canvas);
+            }
+
             canvas.restore();
         }
     }
@@ -720,13 +773,40 @@ public class ChatActionCell extends BaseCell implements DownloadController.FileD
         return TAG;
     }
 
+    private SpannableStringBuilder accessibilityText;
+
     @Override
     public void onInitializeAccessibilityNodeInfo(AccessibilityNodeInfo info) {
         super.onInitializeAccessibilityNodeInfo(info);
         if (TextUtils.isEmpty(customText) && currentMessageObject == null) {
             return;
         }
-        info.setText(!TextUtils.isEmpty(customText) ? customText : currentMessageObject.messageText);
+        if (accessibilityText == null) {
+            CharSequence text = !TextUtils.isEmpty(customText) ? customText : currentMessageObject.messageText;
+            SpannableStringBuilder sb = new SpannableStringBuilder(text);
+            CharacterStyle[] links = sb.getSpans(0, sb.length(), ClickableSpan.class);
+            for (CharacterStyle link : links) {
+                int start = sb.getSpanStart(link);
+                int end = sb.getSpanEnd(link);
+                sb.removeSpan(link);
+
+                ClickableSpan underlineSpan = new ClickableSpan() {
+                    @Override
+                    public void onClick(View view) {
+                        if (delegate != null) {
+                            openLink(link);
+                        }
+                    }
+                };
+                sb.setSpan(underlineSpan, start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            }
+            accessibilityText = sb;
+        }
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
+            info.setContentDescription(accessibilityText.toString());
+        } else {
+            info.setText(accessibilityText);
+        }
         info.setEnabled(true);
     }
 

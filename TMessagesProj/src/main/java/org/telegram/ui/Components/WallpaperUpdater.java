@@ -30,6 +30,7 @@ import org.telegram.messenger.SendMessagesHelper;
 import org.telegram.messenger.Utilities;
 import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.BottomSheet;
+import org.telegram.ui.BasePermissionsActivity;
 import org.telegram.ui.PhotoAlbumPickerActivity;
 
 import java.io.File;
@@ -67,7 +68,7 @@ public class WallpaperUpdater {
             icons = null;
         } else {
             items = new CharSequence[]{LocaleController.getString("ChooseTakePhoto", R.string.ChooseTakePhoto), LocaleController.getString("SelectFromGallery", R.string.SelectFromGallery)};
-            icons = new int[]{R.drawable.menu_camera, R.drawable.profile_photos};
+            icons = new int[]{R.drawable.msg_camera, R.drawable.msg_photos};
         }
 
         builder.setItems(items, icons, (dialogInterface, i) -> {
@@ -110,7 +111,7 @@ public class WallpaperUpdater {
         if (parentFragment != null) {
             if (Build.VERSION.SDK_INT >= 23 && parentFragment.getParentActivity() != null) {
                 if (parentFragment.getParentActivity().checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
-                    parentFragment.getParentActivity().requestPermissions(new String[]{Manifest.permission.READ_EXTERNAL_STORAGE}, 4);
+                    parentFragment.getParentActivity().requestPermissions(new String[]{Manifest.permission.READ_EXTERNAL_STORAGE}, BasePermissionsActivity.REQUEST_CODE_EXTERNAL_STORAGE);
                     return;
                 }
             }

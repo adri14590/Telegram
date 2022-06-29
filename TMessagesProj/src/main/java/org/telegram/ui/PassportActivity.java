@@ -27,8 +27,6 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Vibrator;
 import android.provider.MediaStore;
-import androidx.core.content.FileProvider;
-
 import android.telephony.PhoneNumberUtils;
 import android.telephony.TelephonyManager;
 import android.text.Editable;
@@ -62,6 +60,8 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
+
+import androidx.core.content.FileProvider;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -108,8 +108,8 @@ import org.telegram.ui.Cells.TextInfoPrivacyCell;
 import org.telegram.ui.Cells.TextSettingsCell;
 import org.telegram.ui.Components.AlertsCreator;
 import org.telegram.ui.Components.AvatarDrawable;
-import org.telegram.ui.Components.ChatAttachAlert;
 import org.telegram.ui.Components.BackupImageView;
+import org.telegram.ui.Components.ChatAttachAlert;
 import org.telegram.ui.Components.ContextProgressView;
 import org.telegram.ui.Components.EditTextBoldCursor;
 import org.telegram.ui.Components.EmptyTextProgressView;
@@ -588,7 +588,7 @@ public class PassportActivity extends BaseFragment implements NotificationCenter
 
         public void updateButtonState(boolean animated) {
             String fileName = FileLoader.getAttachFileName(currentSecureDocument);
-            File path = FileLoader.getPathToAttach(currentSecureDocument);
+            File path = FileLoader.getInstance(UserConfig.selectedAccount).getPathToAttach(currentSecureDocument);
             boolean fileExists = path.exists();
             if (TextUtils.isEmpty(fileName)) {
                 radialProgress.setBackground(null, false, false);
@@ -1145,7 +1145,7 @@ public class PassportActivity extends BaseFragment implements NotificationCenter
                         return;
                     }
                     if (currentActivityType == TYPE_PHONE_VERIFICATION) {
-                        views[currentViewNum].onNextPressed();
+                        views[currentViewNum].onNextPressed(null);
                     } else {
                         final Runnable finishRunnable = () -> finishFragment();
                         final ErrorRunnable errorRunnable = new ErrorRunnable() {
@@ -1287,7 +1287,7 @@ public class PassportActivity extends BaseFragment implements NotificationCenter
 
         if (currentActivityType != TYPE_REQUEST && currentActivityType != TYPE_MANAGE) {
             ActionBarMenu menu = actionBar.createMenu();
-            doneItem = menu.addItemWithWidth(done_button, R.drawable.ic_done, AndroidUtilities.dp(56), LocaleController.getString("Done", R.string.Done));
+            doneItem = menu.addItemWithWidth(done_button, R.drawable.ic_ab_done, AndroidUtilities.dp(56), LocaleController.getString("Done", R.string.Done));
             progressView = new ContextProgressView(context, 1);
             progressView.setAlpha(0.0f);
             progressView.setScaleX(0.1f);
@@ -1558,7 +1558,7 @@ public class PassportActivity extends BaseFragment implements NotificationCenter
         noPasswordSetTextView.setText(LocaleController.getString("TelegramPassportCreatePassword", R.string.TelegramPassportCreatePassword));
         linearLayout2.addView(noPasswordSetTextView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 24, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP, 21, 9, 21, 0));
         noPasswordSetTextView.setOnClickListener(v -> {
-            TwoStepVerificationSetupActivity activity = new TwoStepVerificationSetupActivity(currentAccount, TwoStepVerificationSetupActivity.TYPE_ENTER_FIRST, currentPassword);
+            TwoStepVerificationSetupActivity activity = new TwoStepVerificationSetupActivity(currentAccount, TwoStepVerificationSetupActivity.TYPE_CREATE_PASSWORD_STEP_1, currentPassword);
             activity.setCloseAfterSet(true);
             presentFragment(activity);
         });
@@ -1989,7 +1989,7 @@ public class PassportActivity extends BaseFragment implements NotificationCenter
 
         actionBar.setTitle(LocaleController.getString("TelegramPassport", R.string.TelegramPassport));
 
-        actionBar.createMenu().addItem(info_item, R.drawable.profile_info);
+        actionBar.createMenu().addItem(info_item, R.drawable.msg_info);
 
         if (botUser != null) {
             FrameLayout avatarContainer = new FrameLayout(context);
@@ -2419,7 +2419,7 @@ public class PassportActivity extends BaseFragment implements NotificationCenter
 
         actionBar.setTitle(LocaleController.getString("TelegramPassport", R.string.TelegramPassport));
 
-        actionBar.createMenu().addItem(info_item, R.drawable.profile_info);
+        actionBar.createMenu().addItem(info_item, R.drawable.msg_info);
 
         headerCell = new HeaderCell(context);
         headerCell.setText(LocaleController.getString("PassportProvidedInformation", R.string.PassportProvidedInformation));
@@ -5521,9 +5521,9 @@ public class PassportActivity extends BaseFragment implements NotificationCenter
                 }
 
                 private void renameFile(SecureDocument oldDocument, TLRPC.TL_secureFile newSecureFile) {
-                    File oldFile = FileLoader.getPathToAttach(oldDocument);
+                    File oldFile = FileLoader.getInstance(UserConfig.selectedAccount).getPathToAttach(oldDocument);
                     String oldKey = oldDocument.secureFile.dc_id + "_" + oldDocument.secureFile.id;
-                    File newFile = FileLoader.getPathToAttach(newSecureFile);
+                    File newFile = FileLoader.getInstance(UserConfig.selectedAccount).getPathToAttach(newSecureFile);
                     String newKey = newSecureFile.dc_id + "_" + newSecureFile.id;
                     oldFile.renameTo(newFile);
                     ImageLoader.getInstance().replaceImageInCache(oldKey, newKey, null, false);
@@ -6637,7 +6637,7 @@ public class PassportActivity extends BaseFragment implements NotificationCenter
                 if (grantResults != null && grantResults.length != 0 && grantResults[0] != PackageManager.PERMISSION_GRANTED) {
                     AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
                     builder.setTitle(LocaleController.getString("AppName", R.string.AppName));
-                    builder.setMessage(LocaleController.getString("PermissionNoAudioVideo", R.string.PermissionNoAudioVideo));
+                    builder.setMessage(LocaleController.getString("PermissionNoAudioVideoWithHint", R.string.PermissionNoAudioVideoWithHint));
                     builder.setNegativeButton(LocaleController.getString("PermissionOpenSettings", R.string.PermissionOpenSettings), (dialog, which) -> {
                         try {
                             Intent intent = new Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
@@ -6716,7 +6716,7 @@ public class PassportActivity extends BaseFragment implements NotificationCenter
             return;
         }
         progressDialog = new AlertDialog(getParentActivity(), 3);
-        progressDialog.setCanCacnel(false);
+        progressDialog.setCanCancel(false);
         progressDialog.show();
     }
 
@@ -6835,7 +6835,7 @@ public class PassportActivity extends BaseFragment implements NotificationCenter
                     }
                     if (button == 8 || button == 7) {
                         if (button != 8) {
-                            chatAttachAlert.dismiss();
+                            chatAttachAlert.dismiss(true);
                         }
                         HashMap<Object, Object> selectedPhotos = chatAttachAlert.getPhotoLayout().getSelectedPhotos();
                         ArrayList<Object> selectedPhotosOrder = chatAttachAlert.getPhotoLayout().getSelectedPhotosOrder();
@@ -6862,29 +6862,10 @@ public class PassportActivity extends BaseFragment implements NotificationCenter
                 }
 
                 @Override
-                public View getRevealView() {
-                    return null;
-                }
-
-                @Override
-                public void didSelectBot(TLRPC.User user) {
-
-                }
-
-                @Override
                 public void onCameraOpened() {
                     AndroidUtilities.hideKeyboard(fragmentView.findFocus());
                 }
 
-                @Override
-                public boolean needEnterComment() {
-                    return false;
-                }
-
-                @Override
-                public void doOnIdle(Runnable runnable) {
-                    runnable.run();
-                }
             });
         }
     }
@@ -7385,7 +7366,7 @@ public class PassportActivity extends BaseFragment implements NotificationCenter
 
                         Intent mailer = new Intent(Intent.ACTION_SENDTO);
                         mailer.setData(Uri.parse("mailto:"));
-                        mailer.putExtra(Intent.EXTRA_EMAIL, new String[]{"reports@stel.com"});
+                        mailer.putExtra(Intent.EXTRA_EMAIL, new String[]{"sms@telegram.org"});
                         mailer.putExtra(Intent.EXTRA_SUBJECT, "Android registration/login issue " + version + " " + phone);
                         mailer.putExtra(Intent.EXTRA_TEXT, "Phone: " + phone + "\nApp version: " + version + "\nOS version: SDK " + Build.VERSION.SDK_INT + "\nDevice Name: " + Build.MANUFACTURER + Build.MODEL + "\nLocale: " + Locale.getDefault() + "\nError: " + lastError);
                         getContext().startActivity(Intent.createChooser(mailer, "Send email..."));
@@ -7565,7 +7546,7 @@ public class PassportActivity extends BaseFragment implements NotificationCenter
                                     codeField[num + 1].requestFocus();
                                 }
                                 if ((num == length - 1 || num == length - 2 && len >= 2) && getCode().length() == length) {
-                                    onNextPressed();
+                                    onNextPressed(null);
                                 }
                             }
                         }
@@ -7581,7 +7562,7 @@ public class PassportActivity extends BaseFragment implements NotificationCenter
                     });
                     codeField[a].setOnEditorActionListener((textView, i, keyEvent) -> {
                         if (i == EditorInfo.IME_ACTION_NEXT) {
-                            onNextPressed();
+                            onNextPressed(null);
                             return true;
                         }
                         return false;
@@ -7780,11 +7761,13 @@ public class PassportActivity extends BaseFragment implements NotificationCenter
         }
 
         @Override
-        public void onNextPressed() {
+        public void onNextPressed(String code) {
             if (nextPressed) {
                 return;
             }
-            String code = getCode();
+            if (code == null) {
+                code = getCode();
+            }
             if (TextUtils.isEmpty(code)) {
                 AndroidUtilities.shakeView(codeFieldContainer, 2, 0);
                 return;
@@ -7915,7 +7898,7 @@ public class PassportActivity extends BaseFragment implements NotificationCenter
             }
             if (id == NotificationCenter.didReceiveSmsCode) {
                 codeField[0].setText("" + args[0]);
-                onNextPressed();
+                onNextPressed(null);
             } else if (id == NotificationCenter.didReceiveCall) {
                 String num = "" + args[0];
                 if (!AndroidUtilities.checkPhonePattern(pattern, num)) {
@@ -7924,7 +7907,7 @@ public class PassportActivity extends BaseFragment implements NotificationCenter
                 ignoreOnTextChange = true;
                 codeField[0].setText(num);
                 ignoreOnTextChange = false;
-                onNextPressed();
+                onNextPressed(null);
             }
         }
     }

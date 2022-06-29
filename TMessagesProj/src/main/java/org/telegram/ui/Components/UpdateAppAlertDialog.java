@@ -19,6 +19,8 @@ import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
+import androidx.core.widget.NestedScrollView;
+
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.DocumentObject;
 import org.telegram.messenger.FileLoader;
@@ -30,8 +32,6 @@ import org.telegram.messenger.SvgHelper;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.BottomSheet;
 import org.telegram.ui.ActionBar.Theme;
-
-import androidx.core.widget.NestedScrollView;
 
 public class UpdateAppAlertDialog extends BottomSheet {
 
@@ -74,7 +74,7 @@ public class UpdateAppAlertDialog extends BottomSheet {
 
             background = new View(context);
             if (hasBackground) {
-                background.setBackground(Theme.createSimpleSelectorRoundRectDrawable(AndroidUtilities.dp(4), Theme.getColor(Theme.key_featuredStickers_addButton), Theme.getColor(Theme.key_featuredStickers_addButtonPressed)));
+                background.setBackground(Theme.AdaptiveRipple.filledRect(Theme.key_featuredStickers_addButton, 4));
             }
             addView(background, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, 0, 16, withoutBackground ? 0 : 16, 16, 16));
 
@@ -239,9 +239,9 @@ public class UpdateAppAlertDialog extends BottomSheet {
             ImageLocation imageLocation = ImageLocation.getForDocument(thumb, appUpdate.sticker);
 
             if (svgThumb != null) {
-                imageView.setImage(ImageLocation.getForDocument(appUpdate.sticker), "50_50", svgThumb, 0, "update");
+                imageView.setImage(ImageLocation.getForDocument(appUpdate.sticker), "250_250", svgThumb, 0, "update");
             } else {
-                imageView.setImage(ImageLocation.getForDocument(appUpdate.sticker), "50_50", imageLocation, null, 0, "update");
+                imageView.setImage(ImageLocation.getForDocument(appUpdate.sticker), "250_250", imageLocation, null, 0, "update");
             }
             linearLayout.addView(imageView, LayoutHelper.createLinear(160, 160, Gravity.CENTER_HORIZONTAL | Gravity.TOP, 17, 8, 17, 0));
         }

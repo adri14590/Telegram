@@ -56,6 +56,7 @@ public class ContactAddActivity extends BaseFragment implements NotificationCent
     private AvatarDrawable avatarDrawable;
     private TextView infoTextView;
     private CheckBoxCell checkBoxCell;
+    private Theme.ResourcesProvider resourcesProvider;
 
     private long user_id;
     private boolean addContact;
@@ -74,6 +75,16 @@ public class ContactAddActivity extends BaseFragment implements NotificationCent
         super(args);
     }
 
+    public ContactAddActivity(Bundle args, Theme.ResourcesProvider resourcesProvider) {
+        super(args);
+        this.resourcesProvider = resourcesProvider;
+    }
+
+    @Override
+    public Theme.ResourcesProvider getResourceProvider() {
+        return resourcesProvider;
+    }
+
     @Override
     public boolean onFragmentCreate() {
         getNotificationCenter().addObserver(this, NotificationCenter.updateInterfaces);
@@ -81,7 +92,10 @@ public class ContactAddActivity extends BaseFragment implements NotificationCent
         phone = getArguments().getString("phone");
         addContact = getArguments().getBoolean("addContact", false);
         needAddException = MessagesController.getNotificationsSettings(currentAccount).getBoolean("dialog_bar_exception" + user_id, false);
-        TLRPC.User user = getMessagesController().getUser(user_id);
+        TLRPC.User user = null;
+        if (user_id != 0) {
+            user = getMessagesController().getUser(user_id);
+        }
         return user != null && super.onFragmentCreate();
     }
 
@@ -93,6 +107,8 @@ public class ContactAddActivity extends BaseFragment implements NotificationCent
 
     @Override
     public View createView(Context context) {
+        actionBar.setItemsBackgroundColor(Theme.getColor(Theme.key_avatar_actionBarSelectorBlue, resourcesProvider), false);
+        actionBar.setItemsColor(Theme.getColor(Theme.key_actionBarDefaultIcon, resourcesProvider), false);
         actionBar.setBackButtonImage(R.drawable.ic_ab_back);
         actionBar.setAllowOverlayTitle(true);
         if (addContact) {
@@ -142,7 +158,7 @@ public class ContactAddActivity extends BaseFragment implements NotificationCent
         frameLayout.addView(avatarImage, LayoutHelper.createFrame(60, 60, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP));
 
         nameTextView = new TextView(context);
-        nameTextView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
+        nameTextView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText, resourcesProvider));
         nameTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 20);
         nameTextView.setLines(1);
         nameTextView.setMaxLines(1);
@@ -153,7 +169,7 @@ public class ContactAddActivity extends BaseFragment implements NotificationCent
         frameLayout.addView(nameTextView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP, LocaleController.isRTL ? 0 : 80, 3, LocaleController.isRTL ? 80 : 0, 0));
 
         onlineTextView = new TextView(context);
-        onlineTextView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText3));
+        onlineTextView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText3, resourcesProvider));
         onlineTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
         onlineTextView.setLines(1);
         onlineTextView.setMaxLines(1);
@@ -162,11 +178,17 @@ public class ContactAddActivity extends BaseFragment implements NotificationCent
         onlineTextView.setGravity((LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT));
         frameLayout.addView(onlineTextView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP, LocaleController.isRTL ? 0 : 80, 32, LocaleController.isRTL ? 80 : 0, 0));
 
-        firstNameField = new EditTextBoldCursor(context);
+        firstNameField = new EditTextBoldCursor(context) {
+            @Override
+            protected Theme.ResourcesProvider getResourcesProvider() {
+                return resourcesProvider;
+            }
+        };
         firstNameField.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 18);
-        firstNameField.setHintTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteHintText));
-        firstNameField.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
-        firstNameField.setBackgroundDrawable(Theme.createEditTextDrawable(context, false));
+        firstNameField.setHintTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteHintText, resourcesProvider));
+        firstNameField.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText, resourcesProvider));
+        firstNameField.setBackgroundDrawable(null);
+        firstNameField.setLineColors(getThemedColor(Theme.key_windowBackgroundWhiteInputField), getThemedColor(Theme.key_windowBackgroundWhiteInputFieldActivated), getThemedColor(Theme.key_windowBackgroundWhiteRedText3));
         firstNameField.setMaxLines(1);
         firstNameField.setLines(1);
         firstNameField.setSingleLine(true);
@@ -174,7 +196,7 @@ public class ContactAddActivity extends BaseFragment implements NotificationCent
         firstNameField.setInputType(InputType.TYPE_TEXT_FLAG_CAP_SENTENCES | InputType.TYPE_TEXT_FLAG_AUTO_CORRECT);
         firstNameField.setImeOptions(EditorInfo.IME_ACTION_NEXT);
         firstNameField.setHint(LocaleController.getString("FirstName", R.string.FirstName));
-        firstNameField.setCursorColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
+        firstNameField.setCursorColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText, resourcesProvider));
         firstNameField.setCursorSize(AndroidUtilities.dp(20));
         firstNameField.setCursorWidth(1.5f);
         linearLayout.addView(firstNameField, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 36, 24, 24, 24, 0));
@@ -187,21 +209,27 @@ public class ContactAddActivity extends BaseFragment implements NotificationCent
             return false;
         });
         firstNameField.setOnFocusChangeListener(new View.OnFocusChangeListener() {
-            boolean focued;
+            boolean focused;
             @Override
             public void onFocusChange(View v, boolean hasFocus) {
-                if (!paused && !hasFocus && focued) {
+                if (!paused && !hasFocus && focused) {
                     FileLog.d("changed");
                 }
-                focued = hasFocus;
+                focused = hasFocus;
             }
         });
 
-        lastNameField = new EditTextBoldCursor(context);
+        lastNameField = new EditTextBoldCursor(context) {
+            @Override
+            protected Theme.ResourcesProvider getResourcesProvider() {
+                return resourcesProvider;
+            }
+        };
         lastNameField.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 18);
-        lastNameField.setHintTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteHintText));
-        lastNameField.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
-        lastNameField.setBackgroundDrawable(Theme.createEditTextDrawable(context, false));
+        lastNameField.setHintTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteHintText, resourcesProvider));
+        lastNameField.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText, resourcesProvider));
+        lastNameField.setBackgroundDrawable(null);
+        lastNameField.setLineColors(getThemedColor(Theme.key_windowBackgroundWhiteInputField), getThemedColor(Theme.key_windowBackgroundWhiteInputFieldActivated), getThemedColor(Theme.key_windowBackgroundWhiteRedText3));
         lastNameField.setMaxLines(1);
         lastNameField.setLines(1);
         lastNameField.setSingleLine(true);
@@ -209,7 +237,7 @@ public class ContactAddActivity extends BaseFragment implements NotificationCent
         lastNameField.setInputType(InputType.TYPE_TEXT_FLAG_CAP_SENTENCES | InputType.TYPE_TEXT_FLAG_AUTO_CORRECT);
         lastNameField.setImeOptions(EditorInfo.IME_ACTION_DONE);
         lastNameField.setHint(LocaleController.getString("LastName", R.string.LastName));
-        lastNameField.setCursorColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
+        lastNameField.setCursorColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText, resourcesProvider));
         lastNameField.setCursorSize(AndroidUtilities.dp(20));
         lastNameField.setCursorWidth(1.5f);
         linearLayout.addView(lastNameField, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 36, 24, 16, 24, 0));

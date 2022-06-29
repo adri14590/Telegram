@@ -12,6 +12,7 @@ import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.AnimatorSet;
 import android.animation.ObjectAnimator;
+import android.animation.ValueAnimator;
 import android.annotation.TargetApi;
 import android.app.Activity;
 import android.content.Context;
@@ -24,14 +25,7 @@ import android.graphics.Rect;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
 import android.os.Build;
-
-import androidx.annotation.Keep;
-
-import android.os.SystemClock;
-
-import androidx.core.graphics.ColorUtils;
-import androidx.core.math.MathUtils;
-
+import android.util.Log;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
 import android.view.KeyEvent;
@@ -43,16 +37,20 @@ import android.view.ViewGroup;
 import android.view.ViewOutlineProvider;
 import android.view.animation.AccelerateDecelerateInterpolator;
 import android.view.animation.DecelerateInterpolator;
+import android.view.animation.OvershootInterpolator;
 import android.widget.FrameLayout;
 
-import com.google.android.exoplayer2.util.Log;
+import androidx.annotation.Keep;
+import androidx.core.graphics.ColorUtils;
+import androidx.core.math.MathUtils;
 
 import org.telegram.messenger.AndroidUtilities;
-import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.FileLog;
+import org.telegram.messenger.ImageLoader;
 import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.R;
 import org.telegram.messenger.SharedConfig;
+import org.telegram.ui.Components.BackButtonMenu;
 import org.telegram.ui.Components.Bulletin;
 import org.telegram.ui.Components.CubicBezierInterpolator;
 import org.telegram.ui.Components.GroupCallPip;
@@ -75,6 +73,8 @@ public class ActionBarLayout extends FrameLayout {
         void onRebuildAllFragments(ActionBarLayout layout, boolean last);
     }
 
+    public boolean highlightActionButtons = false;
+
     public class LayoutContainer extends FrameLayout {
 
         private Rect rect = new Rect();
@@ -83,6 +83,8 @@ public class ActionBarLayout extends FrameLayout {
         private int fragmentPanTranslationOffset;
         private Paint backgroundPaint = new Paint();
         private int backgroundColor;
+
+        private boolean wasPortrait;
 
         public LayoutContainer(Context context) {
             super(context);
@@ -131,6 +133,12 @@ public class ActionBarLayout extends FrameLayout {
         protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
             int width = MeasureSpec.getSize(widthMeasureSpec);
             int height = MeasureSpec.getSize(heightMeasureSpec);
+            boolean isPortrait = height > width;
+            if (wasPortrait != isPortrait && isInPreviewMode()) {
+                finishPreviewFragment();
+            }
+            wasPortrait = isPortrait;
+
             int count = getChildCount();
             int actionBarHeight = 0;
             for (int a = 0; a < count; a++) {
@@ -191,12 +199,13 @@ public class ActionBarLayout extends FrameLayout {
 
         @Override
         public boolean dispatchTouchEvent(MotionEvent ev) {
-            if ((inPreviewMode || transitionAnimationPreviewMode) && (ev.getActionMasked() == MotionEvent.ACTION_DOWN || ev.getActionMasked() == MotionEvent.ACTION_POINTER_DOWN)) {
+            processMenuButtonsTouch(ev);
+            boolean passivePreview = inPreviewMode && previewMenu == null;
+            if ((passivePreview || transitionAnimationPreviewMode) && (ev.getActionMasked() == MotionEvent.ACTION_DOWN || ev.getActionMasked() == MotionEvent.ACTION_POINTER_DOWN)) {
                 return false;
             }
-            //
             try {
-                return (!inPreviewMode || this != containerView) && super.dispatchTouchEvent(ev);
+                return (!passivePreview || this != containerView) && super.dispatchTouchEvent(ev);
             } catch (Throwable e) {
                 FileLog.e(e);
             }
@@ -218,6 +227,76 @@ public class ActionBarLayout extends FrameLayout {
         public void setFragmentPanTranslationOffset(int fragmentPanTranslationOffset) {
             this.fragmentPanTranslationOffset = fragmentPanTranslationOffset;
             invalidate();
+        }
+
+        // for menu buttons to be clicked by hover:
+        private float pressX, pressY;
+        private boolean allowToPressByHover;
+        public void processMenuButtonsTouch(MotionEvent event) {
+            if (event.getAction() == MotionEvent.ACTION_DOWN) {
+                pressX = event.getX();
+                pressY = event.getY();
+                allowToPressByHover = false;
+            } else if (event.getAction() == MotionEvent.ACTION_MOVE || event.getAction() == MotionEvent.ACTION_UP) {
+                if (previewMenu != null && highlightActionButtons) {
+//                    movePreviewFragment(Math.min(pressY, AndroidUtilities.displaySize.y * .4f) - event.getY());
+                    if (!allowToPressByHover && Math.sqrt(Math.pow(pressX - event.getX(), 2) + Math.pow(pressY - event.getY(), 2)) > AndroidUtilities.dp(30)) {
+                        allowToPressByHover = true;
+                    }
+                    if (allowToPressByHover && (previewMenu.getSwipeBack() == null || !previewMenu.getSwipeBack().isForegroundOpen())) {
+                        for (int i = 0; i < previewMenu.getItemsCount(); ++i) {
+                            ActionBarMenuSubItem button = (ActionBarMenuSubItem) previewMenu.getItemAt(i);
+                            if (button != null) {
+                                Drawable ripple = button.getBackground();
+                                button.getGlobalVisibleRect(AndroidUtilities.rectTmp2);
+                                boolean shouldBeEnabled = AndroidUtilities.rectTmp2.contains((int) event.getX(), (int) event.getY()),
+                                        enabled = ripple.getState().length == 2;
+                                if (event.getAction() == MotionEvent.ACTION_MOVE) {
+                                    if (shouldBeEnabled != enabled) {
+                                        ripple.setState(shouldBeEnabled ? new int[]{android.R.attr.state_pressed, android.R.attr.state_enabled} : new int[]{});
+                                        if (shouldBeEnabled) {
+                                            try {
+                                                button.performHapticFeedback(HapticFeedbackConstants.TEXT_HANDLE_MOVE, HapticFeedbackConstants.FLAG_IGNORE_VIEW_SETTING);
+                                            } catch (Exception ignore) {}
+                                        }
+                                    }
+                                } else if (event.getAction() == MotionEvent.ACTION_UP) {
+                                    if (shouldBeEnabled) {
+                                        button.performClick();
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if (event.getAction() == MotionEvent.ACTION_UP || event.getAction() == MotionEvent.ACTION_CANCEL) {
+                if (previewMenu != null && highlightActionButtons) {
+                    int alpha = 255;
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
+                        alpha = Theme.moveUpDrawable.getAlpha();
+                    }
+                    ValueAnimator arrowAlphaUpdate = ValueAnimator.ofFloat(alpha, 0);
+                    arrowAlphaUpdate.addUpdateListener(a -> {
+                        Theme.moveUpDrawable.setAlpha(((Float) a.getAnimatedValue()).intValue());
+                        if (drawerLayoutContainer != null) {
+                            drawerLayoutContainer.invalidate();
+                        }
+                        if (containerView != null) {
+                            containerView.invalidate();
+                        }
+                        ActionBarLayout.this.invalidate();
+                    });
+                    arrowAlphaUpdate.setDuration(150);
+                    arrowAlphaUpdate.setInterpolator(CubicBezierInterpolator.DEFAULT);
+                    arrowAlphaUpdate.start();
+                    ObjectAnimator containerTranslationUpdate = ObjectAnimator.ofFloat(containerView, View.TRANSLATION_Y, 0);
+                    containerTranslationUpdate.setDuration(150);
+                    containerTranslationUpdate.setInterpolator(CubicBezierInterpolator.DEFAULT);
+                    containerTranslationUpdate.start();
+                }
+                highlightActionButtons = false;
+            }
         }
     }
 
@@ -261,7 +340,7 @@ public class ActionBarLayout extends FrameLayout {
     private boolean previewOpenAnimationInProgress;
     private ColorDrawable previewBackgroundDrawable;
 
-    private LayoutContainer containerView;
+    public LayoutContainer containerView; /* Contest: private -> public temp hack bc I don't know how to blur action bar otherwise */
     private LayoutContainer containerViewBack;
     private DrawerLayoutContainer drawerLayoutContainer;
     private ActionBar currentActionBar;
@@ -269,8 +348,12 @@ public class ActionBarLayout extends FrameLayout {
     private BaseFragment newFragment;
     private BaseFragment oldFragment;
 
+    /* Contest */
+    private ActionBarPopupWindow.ActionBarPopupWindowLayout previewMenu;
+
     private AnimatorSet currentAnimation;
     private DecelerateInterpolator decelerateInterpolator = new DecelerateInterpolator(1.5f);
+    private OvershootInterpolator overshootInterpolator = new OvershootInterpolator(1.02f);
     private AccelerateDecelerateInterpolator accelerateDecelerateInterpolator = new AccelerateDecelerateInterpolator();
 
     public float innerTranslationX;
@@ -326,8 +409,12 @@ public class ActionBarLayout extends FrameLayout {
     protected Activity parentActivity;
 
     public ArrayList<BaseFragment> fragmentsStack;
+    public ArrayList<BackButtonMenu.PulledDialog> pulledDialogs;
     private Rect rect = new Rect();
     private boolean delayedAnimationResumed;
+    private Runnable onFragmentStackChangedListener;
+
+    private int overrideWidthOffset = -1;
 
     public ActionBarLayout(Context context) {
         super(context);
@@ -341,8 +428,8 @@ public class ActionBarLayout extends FrameLayout {
     }
 
     public void init(ArrayList<BaseFragment> stack) {
-        fragmentsStack = stack;
-        containerViewBack = new LayoutContainer(parentActivity);
+        this.fragmentsStack = stack;
+        this.containerViewBack = new LayoutContainer(parentActivity);
         addView(containerViewBack);
         FrameLayout.LayoutParams layoutParams = (FrameLayout.LayoutParams) containerViewBack.getLayoutParams();
         layoutParams.width = LayoutHelper.MATCH_PARENT;
@@ -413,13 +500,19 @@ public class ActionBarLayout extends FrameLayout {
             BaseFragment prevFragment = fragmentsStack.get(fragmentsStack.size() - 2);
             prevFragment.onSlideProgress(false, progress);
             BaseFragment currFragment = fragmentsStack.get(fragmentsStack.size() - 1);
+            float ratio = MathUtils.clamp(2f * progress, 0f, 1f);
             if (currFragment.isBeginToShow()) {
                 int currNavigationBarColor = currFragment.getNavigationBarColor();
                 int prevNavigationBarColor = prevFragment.getNavigationBarColor();
                 if (currNavigationBarColor != prevNavigationBarColor) {
-                    float ratio = MathUtils.clamp(2f * progress, 0f, 1f);
                     currFragment.setNavigationBarColor(ColorUtils.blendARGB(currNavigationBarColor, prevNavigationBarColor, ratio));
                 }
+            }
+            if (currFragment != null && !currFragment.inPreviewMode && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !SharedConfig.noStatusBar) {
+                int overlayColor = Theme.getColor(Theme.key_actionBarDefault) == Color.WHITE ? AndroidUtilities.LIGHT_STATUS_BAR_OVERLAY : AndroidUtilities.DARK_STATUS_BAR_OVERLAY;
+                int oldStatusBarColor = prevFragment != null && prevFragment.hasForceLightStatusBar() ? Color.TRANSPARENT : overlayColor;
+                int newStatusBarColor = currFragment != null && currFragment.hasForceLightStatusBar() ? Color.TRANSPARENT : overlayColor;
+                parentActivity.getWindow().setStatusBarColor(ColorUtils.blendARGB(newStatusBarColor, oldStatusBarColor, ratio));
             }
         }
     }
@@ -459,6 +552,13 @@ public class ActionBarLayout extends FrameLayout {
         if (!fragmentsStack.isEmpty()) {
             BaseFragment lastFragment = fragmentsStack.get(fragmentsStack.size() - 1);
             lastFragment.onResume();
+        }
+    }
+
+    public void onUserLeaveHint() {
+        if (!fragmentsStack.isEmpty()) {
+            BaseFragment lastFragment = fragmentsStack.get(fragmentsStack.size() - 1);
+            lastFragment.onUserLeaveHint();
         }
     }
 
@@ -511,7 +611,7 @@ public class ActionBarLayout extends FrameLayout {
         }
 
         final int restoreCount = canvas.save();
-        if (!transitionAnimationInProgress && !inPreviewMode) {
+        if (!isTransitionAnimationInProgress() && !inPreviewMode) {
             canvas.clipRect(clipLeft, 0, clipRight, getHeight());
         }
         if ((inPreviewMode || transitionAnimationPreviewMode) && child == containerView) {
@@ -520,23 +620,30 @@ public class ActionBarLayout extends FrameLayout {
         final boolean result = super.drawChild(canvas, child, drawingTime);
         canvas.restoreToCount(restoreCount);
 
-        if (translationX != 0) {
+        if (translationX != 0 || overrideWidthOffset != -1) {
+            int widthOffset = overrideWidthOffset != -1 ? overrideWidthOffset : width - translationX;
             if (child == containerView) {
-                final float alpha = Math.max(0, Math.min((width - translationX) / (float) AndroidUtilities.dp(20), 1.0f));
+                float alpha = MathUtils.clamp(widthOffset / (float) AndroidUtilities.dp(20), 0, 1f);
                 layerShadowDrawable.setBounds(translationX - layerShadowDrawable.getIntrinsicWidth(), child.getTop(), translationX, child.getBottom());
                 layerShadowDrawable.setAlpha((int) (0xff * alpha));
                 layerShadowDrawable.draw(canvas);
             } else if (child == containerViewBack) {
-                float opacity = Math.min(0.8f, (width - translationX) / (float) width);
-                if (opacity < 0) {
-                    opacity = 0;
+                float opacity = MathUtils.clamp(widthOffset / (float) width, 0, 0.8f);
+                scrimPaint.setColor(Color.argb((int)(0x99 * opacity), 0x00, 0x00, 0x00));
+                if (overrideWidthOffset != -1) {
+                    canvas.drawRect(0, 0, getWidth(), getHeight(), scrimPaint);
+                } else {
+                    canvas.drawRect(clipLeft, 0, clipRight, getHeight(), scrimPaint);
                 }
-                scrimPaint.setColor((int) (((0x99000000 & 0xff000000) >>> 24) * opacity) << 24);
-                canvas.drawRect(clipLeft, 0, clipRight, getHeight(), scrimPaint);
             }
         }
 
         return result;
+    }
+
+    public void setOverrideWidthOffset(int overrideWidthOffset) {
+        this.overrideWidthOffset = overrideWidthOffset;
+        invalidate();
     }
 
     public float getCurrentPreviewFragmentAlpha() {
@@ -580,10 +687,13 @@ public class ActionBarLayout extends FrameLayout {
         if (view != null) {
             previewBackgroundDrawable.setBounds(0, 0, getMeasuredWidth(), getMeasuredHeight());
             previewBackgroundDrawable.draw(canvas);
-            int x = (getMeasuredWidth() - AndroidUtilities.dp(24)) / 2;
-            int y = (int) (view.getTop() + containerView.getTranslationY() - AndroidUtilities.dp(12 + (Build.VERSION.SDK_INT < 21 ? 20 : 0)));
-            Theme.moveUpDrawable.setBounds(x, y, x + AndroidUtilities.dp(24), y + AndroidUtilities.dp(24));
-            Theme.moveUpDrawable.draw(canvas);
+            if (previewMenu == null) {
+                int width = AndroidUtilities.dp(32), height = width / 2;
+                int x = (getMeasuredWidth() - width) / 2;
+                int y = (int) (view.getTop() + containerView.getTranslationY() - AndroidUtilities.dp(12 + (Build.VERSION.SDK_INT < 21 ? 20 : 0)));
+                Theme.moveUpDrawable.setBounds(x, y, x + width, y + height);
+                Theme.moveUpDrawable.draw(canvas);
+            }
         }
     }
 
@@ -603,6 +713,7 @@ public class ActionBarLayout extends FrameLayout {
             lastFragment.setParentLayout(null);
 
             fragmentsStack.remove(fragmentsStack.size() - 1);
+            onFragmentStackChanged();
 
             LayoutContainer temp = containerView;
             containerView = containerViewBack;
@@ -765,20 +876,26 @@ public class ActionBarLayout extends FrameLayout {
                         float velY = velocityTracker.getYVelocity();
                         final boolean backAnimation = x < containerView.getMeasuredWidth() / 3.0f && (velX < 3500 || velX < velY);
                         float distToMove;
+                        boolean overrideTransition = currentFragment.shouldOverrideSlideTransition(false, backAnimation);
+
                         if (!backAnimation) {
                             distToMove = containerView.getMeasuredWidth() - x;
                             int duration = Math.max((int) (200.0f / containerView.getMeasuredWidth() * distToMove), 50);
-                            animatorSet.playTogether(
-                                    ObjectAnimator.ofFloat(containerView, View.TRANSLATION_X, containerView.getMeasuredWidth()).setDuration(duration),
-                                    ObjectAnimator.ofFloat(this, "innerTranslationX", (float) containerView.getMeasuredWidth()).setDuration(duration)
-                            );
+                            if (!overrideTransition) {
+                                animatorSet.playTogether(
+                                        ObjectAnimator.ofFloat(containerView, View.TRANSLATION_X, containerView.getMeasuredWidth()).setDuration(duration),
+                                        ObjectAnimator.ofFloat(this, "innerTranslationX", (float) containerView.getMeasuredWidth()).setDuration(duration)
+                                );
+                            }
                         } else {
                             distToMove = x;
                             int duration = Math.max((int) (200.0f / containerView.getMeasuredWidth() * distToMove), 50);
-                            animatorSet.playTogether(
-                                    ObjectAnimator.ofFloat(containerView, View.TRANSLATION_X, 0).setDuration(duration),
-                                    ObjectAnimator.ofFloat(this, "innerTranslationX", 0.0f).setDuration(duration)
-                            );
+                            if (!overrideTransition) {
+                                animatorSet.playTogether(
+                                        ObjectAnimator.ofFloat(containerView, View.TRANSLATION_X, 0).setDuration(duration),
+                                        ObjectAnimator.ofFloat(this, "innerTranslationX", 0.0f).setDuration(duration)
+                                );
+                            }
                         }
 
                         Animator customTransition = currentFragment.getCustomSlideTransition(false, backAnimation, distToMove);
@@ -913,6 +1030,7 @@ public class ActionBarLayout extends FrameLayout {
             fragment.onFragmentDestroy();
             fragment.setParentLayout(null);
             fragmentsStack.remove(fragment);
+            onFragmentStackChanged();
         } else {
             if (fragment.fragmentView != null) {
                 ViewGroup parent = (ViewGroup) fragment.fragmentView.getParent();
@@ -941,15 +1059,19 @@ public class ActionBarLayout extends FrameLayout {
     }
 
     public boolean presentFragmentAsPreview(BaseFragment fragment) {
-        return presentFragment(fragment, false, false, true, true);
+        return presentFragment(fragment, false, false, true, true, null);
+    }
+
+    public boolean presentFragmentAsPreviewWithMenu(BaseFragment fragment, ActionBarPopupWindow.ActionBarPopupWindowLayout menu) {
+        return presentFragment(fragment, false, false, true, true, menu);
     }
 
     public boolean presentFragment(BaseFragment fragment) {
-        return presentFragment(fragment, false, false, true, false);
+        return presentFragment(fragment, false, false, true, false, null);
     }
 
     public boolean presentFragment(BaseFragment fragment, boolean removeLast) {
-        return presentFragment(fragment, removeLast, false, true, false);
+        return presentFragment(fragment, removeLast, false, true, false, null);
     }
 
     private void startLayoutAnimation(final boolean open, final boolean first, final boolean preview) {
@@ -973,7 +1095,8 @@ public class ActionBarLayout extends FrameLayout {
                     dt = 18;
                 }
                 lastFrameTime = newTime;
-                animationProgress += dt / 150.0f;
+                float duration = preview && open ? 190.0f : 150.0f;
+                animationProgress += dt / duration;
                 if (animationProgress > 1.0f) {
                     animationProgress = 1.0f;
                 }
@@ -985,30 +1108,49 @@ public class ActionBarLayout extends FrameLayout {
                 }
                 Integer oldNavigationBarColor = oldFragment != null ? oldFragment.getNavigationBarColor() : null;
                 Integer newNavigationBarColor = newFragment != null ? newFragment.getNavigationBarColor() : null;
-                if (newFragment != null && !newFragment.inPreviewMode && oldNavigationBarColor != null) {
+                if (newFragment != null && oldNavigationBarColor != null) {
                     float ratio = MathUtils.clamp(2f * animationProgress - (open ? 1f : 0f), 0f, 1f);
                     newFragment.setNavigationBarColor(ColorUtils.blendARGB(oldNavigationBarColor, newNavigationBarColor, ratio));
                 }
-                float interpolated = decelerateInterpolator.getInterpolation(animationProgress);
+                float interpolated;
+                if (preview) {
+                    if (open) {
+                        interpolated = overshootInterpolator.getInterpolation(animationProgress);
+                    } else {
+                        interpolated = CubicBezierInterpolator.EASE_OUT_QUINT.getInterpolation(animationProgress);
+                    }
+                } else {
+                    interpolated = decelerateInterpolator.getInterpolation(animationProgress);
+                }
                 if (open) {
-                    containerView.setAlpha(interpolated);
+                    float clampedInterpolated = MathUtils.clamp(interpolated, 0, 1);
+                    containerView.setAlpha(clampedInterpolated);
                     if (preview) {
-                        containerView.setScaleX(0.9f + 0.1f * interpolated);
-                        containerView.setScaleY(0.9f + 0.1f * interpolated);
-                        previewBackgroundDrawable.setAlpha((int) (0x2e * interpolated));
-                        Theme.moveUpDrawable.setAlpha((int) (255 * interpolated));
+                        containerView.setScaleX(0.7f + 0.3f * interpolated);
+                        containerView.setScaleY(0.7f + 0.3f * interpolated);
+                        if (previewMenu != null) {
+                            containerView.setTranslationY(AndroidUtilities.dp(40) * (1f - interpolated));
+                            previewMenu.setTranslationY(-AndroidUtilities.dp(40 + 30) * (1f - interpolated));
+                            previewMenu.setScaleX(0.95f + 0.05f * interpolated);
+                            previewMenu.setScaleY(0.95f + 0.05f * interpolated);
+                        }
+                        previewBackgroundDrawable.setAlpha((int) (0x2e * clampedInterpolated));
+                        Theme.moveUpDrawable.setAlpha((int) (255 * clampedInterpolated));
                         containerView.invalidate();
                         invalidate();
                     } else {
                         containerView.setTranslationX(AndroidUtilities.dp(48) * (1.0f - interpolated));
                     }
                 } else {
-                    containerViewBack.setAlpha(1.0f - interpolated);
+                    float clampedReverseInterpolated = MathUtils.clamp(1f - interpolated, 0, 1);
+                    containerViewBack.setAlpha(clampedReverseInterpolated);
                     if (preview) {
                         containerViewBack.setScaleX(0.9f + 0.1f * (1.0f - interpolated));
                         containerViewBack.setScaleY(0.9f + 0.1f * (1.0f - interpolated));
-                        previewBackgroundDrawable.setAlpha((int) (0x2e * (1.0f - interpolated)));
-                        Theme.moveUpDrawable.setAlpha((int) (255 * (1.0f - interpolated)));
+                        previewBackgroundDrawable.setAlpha((int) (0x2e * clampedReverseInterpolated));
+                        if (previewMenu == null) {
+                            Theme.moveUpDrawable.setAlpha((int) (255 * clampedReverseInterpolated));
+                        }
                         containerView.invalidate();
                         invalidate();
                     } else {
@@ -1038,11 +1180,39 @@ public class ActionBarLayout extends FrameLayout {
         return inPreviewMode || transitionAnimationPreviewMode;
     }
 
+    public boolean isInPassivePreviewMode() {
+        return (inPreviewMode && previewMenu == null) || transitionAnimationPreviewMode;
+    }
+
+    public boolean isInPreviewMenuMode() {
+        return isInPreviewMode() && previewMenu != null;
+    }
+
+
     public boolean presentFragment(final BaseFragment fragment, final boolean removeLast, boolean forceWithoutAnimation, boolean check, final boolean preview) {
+        return presentFragment(fragment, removeLast, forceWithoutAnimation, check, preview, null);
+    }
+
+    public boolean presentFragment(final BaseFragment fragment, final boolean removeLast, boolean forceWithoutAnimation, boolean check, final boolean preview, ActionBarPopupWindow.ActionBarPopupWindowLayout menu) {
         if (fragment == null || checkTransitionAnimation() || delegate != null && check && !delegate.needPresentFragment(fragment, removeLast, forceWithoutAnimation, this) || !fragment.onFragmentCreate()) {
             return false;
         }
+        if (inPreviewMode && transitionAnimationPreviewMode) {
+            if (delayedOpenAnimationRunnable != null) {
+                AndroidUtilities.cancelRunOnUIThread(delayedOpenAnimationRunnable);
+                delayedOpenAnimationRunnable = null;
+            }
+            closeLastFragment(false, true);
+        }
         fragment.setInPreviewMode(preview);
+        if (previewMenu != null) {
+            if (previewMenu.getParent() != null) {
+                ((ViewGroup) previewMenu.getParent()).removeView(previewMenu);
+            }
+            previewMenu = null;
+        }
+        previewMenu = menu;
+        fragment.setInMenuMode(previewMenu != null);
         if (parentActivity.getCurrentFocus() != null && fragment.hideKeyboardOnShow() && !preview) {
             AndroidUtilities.hideKeyboard(parentActivity.getCurrentFocus());
         }
@@ -1061,8 +1231,20 @@ public class ActionBarLayout extends FrameLayout {
                 parent.removeView(fragmentView);
             }
         }
-        containerViewBack.addView(fragmentView);
-        FrameLayout.LayoutParams layoutParams = (FrameLayout.LayoutParams) fragmentView.getLayoutParams();
+        View wrappedView = fragmentView;
+        containerViewBack.addView(wrappedView);
+        int menuHeight = 0;
+        if (menu != null) {
+            containerViewBack.addView(menu);
+            menu.measure(MeasureSpec.makeMeasureSpec(getMeasuredWidth(), MeasureSpec.AT_MOST), MeasureSpec.makeMeasureSpec(getMeasuredHeight(), MeasureSpec.AT_MOST));
+            menuHeight = menu.getMeasuredHeight() + AndroidUtilities.dp(24);
+            FrameLayout.LayoutParams menuParams = (FrameLayout.LayoutParams) menu.getLayoutParams();
+            menuParams.width = LayoutHelper.WRAP_CONTENT;
+            menuParams.height = LayoutHelper.WRAP_CONTENT;
+            menuParams.topMargin = getMeasuredHeight() - menuHeight - AndroidUtilities.dp(6);
+            menu.setLayoutParams(menuParams);
+        }
+        FrameLayout.LayoutParams layoutParams = (FrameLayout.LayoutParams) wrappedView.getLayoutParams();
         layoutParams.width = LayoutHelper.MATCH_PARENT;
         layoutParams.height = LayoutHelper.MATCH_PARENT;
         if (preview) {
@@ -1072,14 +1254,18 @@ public class ActionBarLayout extends FrameLayout {
                 layoutParams.height = height;
                 layoutParams.topMargin = statusBarHeight + (getMeasuredHeight() - statusBarHeight - height) / 2;
             } else {
-                layoutParams.topMargin = layoutParams.bottomMargin = AndroidUtilities.dp(46);
+                layoutParams.topMargin = layoutParams.bottomMargin = AndroidUtilities.dp(menu != null ? 0 : 24);
                 layoutParams.topMargin += AndroidUtilities.statusBarHeight;
+            }
+            if (menu != null) {
+                layoutParams.bottomMargin += menuHeight + AndroidUtilities.dp(8);
+//                layoutParams.topMargin += AndroidUtilities.dp(32);
             }
             layoutParams.rightMargin = layoutParams.leftMargin = AndroidUtilities.dp(8);
         } else {
             layoutParams.topMargin = layoutParams.bottomMargin = layoutParams.rightMargin = layoutParams.leftMargin = 0;
         }
-        fragmentView.setLayoutParams(layoutParams);
+        wrappedView.setLayoutParams(layoutParams);
         if (fragment.actionBar != null && fragment.actionBar.shouldAddToContainer()) {
             if (removeActionBarExtraHeight) {
                 fragment.actionBar.setOccupyStatusBar(false);
@@ -1092,6 +1278,7 @@ public class ActionBarLayout extends FrameLayout {
             fragment.actionBar.setTitleOverlayText(titleOverlayText, titleOverlayTextId, overlayAction);
         }
         fragmentsStack.add(fragment);
+        onFragmentStackChanged();
         fragment.onResume();
         currentActionBar = fragment.actionBar;
         if (!fragment.hasOwnBackground && fragmentView.getBackground() == null) {
@@ -1179,6 +1366,7 @@ public class ActionBarLayout extends FrameLayout {
                 onOpenAnimationEndRunnable = () -> {
                     if (preview) {
                         inPreviewMode = true;
+                        previewMenu = menu;
                         transitionAnimationPreviewMode = false;
                         containerView.setScaleX(1.0f);
                         containerView.setScaleY(1.0f);
@@ -1279,7 +1467,7 @@ public class ActionBarLayout extends FrameLayout {
                         startLayoutAnimation(true, true, preview);
                     }
                 } else {
-                    if (!preview && containerView.isKeyboardVisible || containerViewBack.isKeyboardVisible && currentFragment != null) {
+                    if (!preview && (containerView.isKeyboardVisible || containerViewBack.isKeyboardVisible) && currentFragment != null) {
                         currentFragment.saveKeyboardPositionBeforeTransition();
                     }
                     currentAnimation = animation;
@@ -1299,6 +1487,17 @@ public class ActionBarLayout extends FrameLayout {
             fragment.onBecomeFullyVisible();
         }
         return true;
+    }
+
+    public void setFragmentStackChangedListener(Runnable onFragmentStackChanged) {
+        this.onFragmentStackChangedListener = onFragmentStackChanged;
+    }
+
+    private void onFragmentStackChanged() {
+        if (onFragmentStackChangedListener != null) {
+            onFragmentStackChangedListener.run();
+        }
+        ImageLoader.getInstance().onFragmentStackChanged();
     }
 
     public boolean addFragmentToStack(BaseFragment fragment) {
@@ -1329,13 +1528,16 @@ public class ActionBarLayout extends FrameLayout {
                 }
             }
             fragmentsStack.add(fragment);
+            onFragmentStackChanged();
         } else {
             fragmentsStack.add(position, fragment);
+            onFragmentStackChanged();
         }
         return true;
     }
 
     private void closeLastFragmentInternalRemoveOld(BaseFragment fragment) {
+        fragment.finishing = true;
         fragment.onPause();
         fragment.onFragmentDestroy();
         fragment.setParentLayout(null);
@@ -1343,10 +1545,11 @@ public class ActionBarLayout extends FrameLayout {
         containerViewBack.setVisibility(View.INVISIBLE);
         containerViewBack.setTranslationY(0);
         bringChildToFront(containerView);
+        onFragmentStackChanged();
     }
 
     public void movePreviewFragment(float dy) {
-        if (!inPreviewMode || transitionAnimationPreviewMode) {
+        if (!inPreviewMode || previewMenu != null || transitionAnimationPreviewMode) {
             return;
         }
         float currentTranslation = containerView.getTranslationY();
@@ -1354,46 +1557,51 @@ public class ActionBarLayout extends FrameLayout {
         if (nextTranslation > 0) {
             nextTranslation = 0;
         } else if (nextTranslation < -AndroidUtilities.dp(60)) {
-            previewOpenAnimationInProgress = true;
-            inPreviewMode = false;
             nextTranslation = 0;
-
-            BaseFragment prevFragment = fragmentsStack.get(fragmentsStack.size() - 2);
-            BaseFragment fragment = fragmentsStack.get(fragmentsStack.size() - 1);
-
-            if (Build.VERSION.SDK_INT >= 21) {
-                fragment.fragmentView.setOutlineProvider(null);
-                fragment.fragmentView.setClipToOutline(false);
-            }
-            FrameLayout.LayoutParams layoutParams = (FrameLayout.LayoutParams) fragment.fragmentView.getLayoutParams();
-            layoutParams.topMargin = layoutParams.bottomMargin = layoutParams.rightMargin = layoutParams.leftMargin = 0;
-            layoutParams.height = LayoutHelper.MATCH_PARENT;
-            fragment.fragmentView.setLayoutParams(layoutParams);
-
-            presentFragmentInternalRemoveOld(false, prevFragment);
-
-            AnimatorSet animatorSet = new AnimatorSet();
-            animatorSet.playTogether(
-                    ObjectAnimator.ofFloat(fragment.fragmentView, View.SCALE_X, 1.0f, 1.05f, 1.0f),
-                    ObjectAnimator.ofFloat(fragment.fragmentView, View.SCALE_Y, 1.0f, 1.05f, 1.0f));
-            animatorSet.setDuration(200);
-            animatorSet.setInterpolator(new CubicBezierInterpolator(0.42, 0.0, 0.58, 1.0));
-            animatorSet.addListener(new AnimatorListenerAdapter() {
-                @Override
-                public void onAnimationEnd(Animator animation) {
-                    previewOpenAnimationInProgress = false;
-                    fragment.onPreviewOpenAnimationEnd();
-                }
-            });
-            animatorSet.start();
-            performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
-
-            fragment.setInPreviewMode(false);
+            expandPreviewFragment();
         }
         if (currentTranslation != nextTranslation) {
             containerView.setTranslationY(nextTranslation);
             invalidate();
         }
+    }
+
+    public void expandPreviewFragment() {
+        previewOpenAnimationInProgress = true;
+        inPreviewMode = false;
+
+        BaseFragment prevFragment = fragmentsStack.get(fragmentsStack.size() - 2);
+        BaseFragment fragment = fragmentsStack.get(fragmentsStack.size() - 1);
+
+        if (Build.VERSION.SDK_INT >= 21) {
+            fragment.fragmentView.setOutlineProvider(null);
+            fragment.fragmentView.setClipToOutline(false);
+        }
+        FrameLayout.LayoutParams layoutParams = (FrameLayout.LayoutParams) fragment.fragmentView.getLayoutParams();
+        layoutParams.topMargin = layoutParams.bottomMargin = layoutParams.rightMargin = layoutParams.leftMargin = 0;
+        layoutParams.height = LayoutHelper.MATCH_PARENT;
+        fragment.fragmentView.setLayoutParams(layoutParams);
+
+        presentFragmentInternalRemoveOld(false, prevFragment);
+
+        AnimatorSet animatorSet = new AnimatorSet();
+        animatorSet.playTogether(
+                ObjectAnimator.ofFloat(fragment.fragmentView, View.SCALE_X, 1.0f, 1.05f, 1.0f),
+                ObjectAnimator.ofFloat(fragment.fragmentView, View.SCALE_Y, 1.0f, 1.05f, 1.0f));
+        animatorSet.setDuration(200);
+        animatorSet.setInterpolator(new CubicBezierInterpolator(0.42, 0.0, 0.58, 1.0));
+        animatorSet.addListener(new AnimatorListenerAdapter() {
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                previewOpenAnimationInProgress = false;
+                fragment.onPreviewOpenAnimationEnd();
+            }
+        });
+        animatorSet.start();
+        performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+
+        fragment.setInPreviewMode(false);
+        fragment.setInMenuMode(false);
     }
 
     public void finishPreviewFragment() {
@@ -1408,6 +1616,10 @@ public class ActionBarLayout extends FrameLayout {
     }
 
     public void closeLastFragment(boolean animated) {
+        closeLastFragment(animated, false);
+    }
+
+    public void closeLastFragment(boolean animated, boolean forceNoAnimation) {
         if (delegate != null && !delegate.needCloseLastFragment(this) || checkTransitionAnimation() || fragmentsStack.isEmpty()) {
             return;
         }
@@ -1415,7 +1627,7 @@ public class ActionBarLayout extends FrameLayout {
             AndroidUtilities.hideKeyboard(parentActivity.getCurrentFocus());
         }
         setInnerTranslationX(0);
-        boolean needAnimation = inPreviewMode || transitionAnimationPreviewMode || animated && MessagesController.getGlobalMainSettings().getBoolean("view_animations", true);
+        boolean needAnimation = !forceNoAnimation && (inPreviewMode || transitionAnimationPreviewMode || animated && MessagesController.getGlobalMainSettings().getBoolean("view_animations", true));
         final BaseFragment currentFragment = fragmentsStack.get(fragmentsStack.size() - 1);
         BaseFragment previousFragment = null;
         if (fragmentsStack.size() > 1) {
@@ -1423,6 +1635,7 @@ public class ActionBarLayout extends FrameLayout {
         }
 
         if (previousFragment != null) {
+            AndroidUtilities.setLightStatusBar(parentActivity.getWindow(), Theme.getColor(Theme.key_actionBarDefault) == Color.WHITE || (previousFragment.hasForceLightStatusBar() && !Theme.getCurrentTheme().isDark()), previousFragment.hasForceLightStatusBar());
             LayoutContainer temp = containerView;
             containerView = containerViewBack;
             containerViewBack = temp;
@@ -1476,25 +1689,34 @@ public class ActionBarLayout extends FrameLayout {
                 fragmentView.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
             }
 
-            if (!needAnimation) {
-                closeLastFragmentInternalRemoveOld(currentFragment);
-            }
-
             if (needAnimation) {
                 transitionAnimationStartTime = System.currentTimeMillis();
                 transitionAnimationInProgress = true;
                 layoutToIgnore = containerView;
                 final BaseFragment previousFragmentFinal = previousFragment;
+                currentFragment.setRemovingFromStack(true);
                 onCloseAnimationEndRunnable = () -> {
+                    if (previewMenu != null) {
+                        ViewGroup parent = (ViewGroup) previewMenu.getParent();
+                        if (parent != null) {
+                            //ViewGroup grandparent = (ViewGroup) parent.getParent();
+                            parent.removeView(previewMenu);
+                            /*if (grandparent != null) {
+                                grandparent.removeView(parent);
+                            }*/
+                        }
+                    }
                     if (inPreviewMode || transitionAnimationPreviewMode) {
                         containerViewBack.setScaleX(1.0f);
                         containerViewBack.setScaleY(1.0f);
                         inPreviewMode = false;
+                        previewMenu = null;
                         transitionAnimationPreviewMode = false;
                     } else {
                         containerViewBack.setTranslationX(0);
                     }
                     closeLastFragmentInternalRemoveOld(currentFragment);
+                    currentFragment.setRemovingFromStack(false);
                     currentFragment.onTransitionAnimationEnd(false, true);
                     previousFragmentFinal.onTransitionAnimationEnd(true, true);
                     previousFragmentFinal.onBecomeFullyVisible();
@@ -1525,13 +1747,15 @@ public class ActionBarLayout extends FrameLayout {
                         Bulletin.getVisibleBulletin().hide();
                     }
                 }
+                onFragmentStackChanged();
             } else {
+                closeLastFragmentInternalRemoveOld(currentFragment);
                 currentFragment.onTransitionAnimationEnd(false, true);
                 previousFragment.onTransitionAnimationEnd(true, true);
                 previousFragment.onBecomeFullyVisible();
             }
         } else {
-            if (useAlphaAnimations) {
+            if (useAlphaAnimations && !forceNoAnimation) {
                 transitionAnimationStartTime = System.currentTimeMillis();
                 transitionAnimationInProgress = true;
                 layoutToIgnore = containerView;
@@ -1579,11 +1803,11 @@ public class ActionBarLayout extends FrameLayout {
         }
     }
 
-    public void showLastFragment() {
+    public void showFragment(int i) {
         if (fragmentsStack.isEmpty()) {
             return;
         }
-        for (int a = 0; a < fragmentsStack.size() - 1; a++) {
+        for (int a = 0; a < i; a++) {
             BaseFragment previousFragment = fragmentsStack.get(a);
             if (previousFragment.actionBar != null && previousFragment.actionBar.shouldAddToContainer()) {
                 ViewGroup parent = (ViewGroup) previousFragment.actionBar.getParent();
@@ -1600,7 +1824,7 @@ public class ActionBarLayout extends FrameLayout {
                 }
             }
         }
-        BaseFragment previousFragment = fragmentsStack.get(fragmentsStack.size() - 1);
+        BaseFragment previousFragment = fragmentsStack.get(i);
         previousFragment.setParentLayout(this);
         View fragmentView = previousFragment.fragmentView;
         if (fragmentView == null) {
@@ -1631,11 +1855,19 @@ public class ActionBarLayout extends FrameLayout {
         }
     }
 
+    public void showLastFragment() {
+        if (fragmentsStack.isEmpty()) {
+            return;
+        }
+        showFragment(fragmentsStack.size() - 1);
+    }
+
     private void removeFragmentFromStackInternal(BaseFragment fragment) {
         fragment.onPause();
         fragment.onFragmentDestroy();
         fragment.setParentLayout(null);
         fragmentsStack.remove(fragment);
+        onFragmentStackChanged();
     }
 
     public void removeFragmentFromStack(int num) {
@@ -1761,7 +1993,7 @@ public class ActionBarLayout extends FrameLayout {
             themeAnimatorSet = null;
         }
         boolean startAnimation = false;
-        int fragmentCount = settings.onlyTopFragment ? 1 : 2;
+        int fragmentCount = settings.onlyTopFragment ? 1 : fragmentsStack.size();
         for (int i = 0; i < fragmentCount; i++) {
             BaseFragment fragment;
             if (i == 0) {
@@ -1794,7 +2026,7 @@ public class ActionBarLayout extends FrameLayout {
                 }
                 if (i == 0) {
                     if (settings.applyTheme) {
-                        if (settings.accentId != -1) {
+                        if (settings.accentId != -1 && settings.theme != null) {
                             settings.theme.setCurrentAccentId(settings.accentId);
                             Theme.saveThemeAccents(settings.theme, true, false, true, false);
                         }
@@ -1813,11 +2045,13 @@ public class ActionBarLayout extends FrameLayout {
             }
         }
         if (startAnimation) {
-            int count = fragmentsStack.size() - (inPreviewMode || transitionAnimationPreviewMode ? 2 : 1);
-            for (int a = 0; a < count; a++) {
-                BaseFragment fragment = fragmentsStack.get(a);
-                fragment.clearViews();
-                fragment.setParentLayout(this);
+            if (!settings.onlyTopFragment) {
+                int count = fragmentsStack.size() - (inPreviewMode || transitionAnimationPreviewMode ? 2 : 1);
+                for (int a = 0; a < count; a++) {
+                    BaseFragment fragment = fragmentsStack.get(a);
+                    fragment.clearViews();
+                    fragment.setParentLayout(this);
+                }
             }
             if (settings.instant) {
                 setThemeAnimationValue(1.0f);
@@ -1877,6 +2111,14 @@ public class ActionBarLayout extends FrameLayout {
             themeAnimatorSet.setDuration(settings.duration);
             themeAnimatorSet.start();
         }
+    }
+
+    public void rebuildLogout() {
+        containerView.removeAllViews();
+        containerViewBack.removeAllViews();
+        currentActionBar = null;
+        newFragment = null;
+        oldFragment = null;
     }
 
     public void rebuildAllFragmentViews(boolean last, boolean showLastAfter) {

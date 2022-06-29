@@ -21,6 +21,8 @@ import android.os.SystemClock;
 import android.text.TextUtils;
 import android.util.SparseIntArray;
 
+import androidx.collection.LongSparseArray;
+
 import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.GoogleApiAvailability;
 import com.google.android.gms.common.api.GoogleApiClient;
@@ -42,8 +44,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
-
-import androidx.collection.LongSparseArray;
 
 public class LocationController extends BaseController implements NotificationCenter.NotificationCenterDelegate, GoogleApiClient.ConnectionCallbacks, GoogleApiClient.OnConnectionFailedListener {
 
@@ -915,7 +915,7 @@ public class LocationController extends BaseController implements NotificationCe
                 LocationServices.FusedLocationApi.removeLocationUpdates(googleApiClient, fusedLocationListener);
                 googleApiClient.disconnect();
             } catch (Throwable e) {
-                FileLog.e(e);
+                FileLog.e(e, false);
             }
         }
         locationManager.removeUpdates(gpsLocationListener);

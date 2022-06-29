@@ -62,6 +62,7 @@ import org.telegram.ui.Cells.SharedMediaSectionCell;
 import org.telegram.ui.Cells.SharedPhotoVideoCell;
 import org.telegram.ui.Components.AlertsCreator;
 import org.telegram.ui.Components.BackupImageView;
+import org.telegram.ui.Components.BlurredRecyclerView;
 import org.telegram.ui.Components.ColoredImageSpan;
 import org.telegram.ui.Components.CubicBezierInterpolator;
 import org.telegram.ui.Components.EmbedBottomSheet;
@@ -268,7 +269,7 @@ public class FilteredSearchView extends FrameLayout implements NotificationCente
         parentFragment = fragment;
         Context context = parentActivity = fragment.getParentActivity();
         setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
-        recyclerListView = new RecyclerListView(context) {
+        recyclerListView = new BlurredRecyclerView(context) {
 
             @Override
             protected void dispatchDraw(Canvas canvas) {
@@ -323,7 +324,7 @@ public class FilteredSearchView extends FrameLayout implements NotificationCente
                 } else if (view instanceof DialogCell) {
                     if (!uiCallback.actionModeShowing()) {
                         if (((DialogCell) view).isPointInsideAvatar(x, y)) {
-                            chatPreviewDelegate.startChatPreview((DialogCell) view);
+                            chatPreviewDelegate.startChatPreview(recyclerListView, (DialogCell) view);
                             return true;
                         }
                     }
@@ -354,7 +355,7 @@ public class FilteredSearchView extends FrameLayout implements NotificationCente
         });
         addView(recyclerListView);
 
-        recyclerListView.setSectionsType(2);
+        recyclerListView.setSectionsType(RecyclerListView.SECTIONS_TYPE_DATE);
         recyclerListView.setOnScrollListener(new RecyclerView.OnScrollListener() {
             @Override
             public void onScrollStateChanged(RecyclerView recyclerView, int newState) {
@@ -373,7 +374,9 @@ public class FilteredSearchView extends FrameLayout implements NotificationCente
                 int visibleItemCount = Math.abs(lastVisibleItem - firstVisibleItem) + 1;
                 int totalItemCount = recyclerView.getAdapter().getItemCount();
                 if (!isLoading && visibleItemCount > 0 && lastVisibleItem >= totalItemCount - 10 && !endReached) {
-                    search(currentSearchDialogId, currentSearchMinDate, currentSearchMaxDate, currentSearchFilter, currentIncludeFolder, lastMessagesSearchString, false);
+                    AndroidUtilities.runOnUIThread(() -> {
+                        search(currentSearchDialogId, currentSearchMinDate, currentSearchMaxDate, currentSearchFilter, currentIncludeFolder, lastMessagesSearchString, false);
+                    });
                 }
 
                 if (adapter == sharedPhotoVideoAdapter) {
@@ -980,7 +983,6 @@ public class FilteredSearchView extends FrameLayout implements NotificationCente
             PhotoViewer.getInstance().setParentActivity(parentActivity);
             PhotoViewer.getInstance().openPhoto(messages, index, 0, 0, provider);
             photoViewerClassGuid = PhotoViewer.getInstance().getClassGuid();
-
         } else if (currentSearchFilter.filterType == FiltersView.FILTER_TYPE_MUSIC || currentSearchFilter.filterType == FiltersView.FILTER_TYPE_VOICE) {
             if (view instanceof SharedAudioCell) {
                 ((SharedAudioCell) view).didPressedButton();
@@ -1009,6 +1011,7 @@ public class FilteredSearchView extends FrameLayout implements NotificationCente
                     AndroidUtilities.openDocument(message, parentActivity, parentFragment);
                 } else if (!cell.isLoading()) {
                     MessageObject messageObject = cell.getMessage();
+                    messageObject.putInDownloadsStore = true;
                     AccountInstance.getInstance(UserConfig.selectedAccount).getFileLoader().loadFile(document, messageObject, 0, 0);
                     cell.updateFileExistIcon(true);
                 } else {
@@ -1687,6 +1690,7 @@ public class FilteredSearchView extends FrameLayout implements NotificationCente
         this.chatPreviewDelegate = chatPreviewDelegate;
     }
 
+
     public ArrayList<ThemeDescription> getThemeDescriptions() {
         ArrayList<ThemeDescription> arrayList = new ArrayList<>();
         arrayList.add(new ThemeDescription(this, ThemeDescription.FLAG_BACKGROUND, null, null, null, null, Theme.key_windowBackgroundWhite));
@@ -1726,7 +1730,6 @@ public class FilteredSearchView extends FrameLayout implements NotificationCente
         arrayList.add(new ThemeDescription(recyclerListView, 0, new Class[]{DialogCell.class}, Theme.dialogs_countGrayPaint, null, null, Theme.key_chats_unreadCounterMuted));
         arrayList.add(new ThemeDescription(recyclerListView, 0, new Class[]{DialogCell.class}, Theme.dialogs_countTextPaint, null, null, Theme.key_chats_unreadCounterText));
         arrayList.add(new ThemeDescription(recyclerListView, 0, new Class[]{DialogCell.class, ProfileSearchCell.class}, null, new Drawable[]{Theme.dialogs_lockDrawable}, null, Theme.key_chats_secretIcon));
-        arrayList.add(new ThemeDescription(recyclerListView, 0, new Class[]{DialogCell.class, ProfileSearchCell.class}, null, new Drawable[]{Theme.dialogs_groupDrawable, Theme.dialogs_broadcastDrawable, Theme.dialogs_botDrawable}, null, Theme.key_chats_nameIcon));
         arrayList.add(new ThemeDescription(recyclerListView, 0, new Class[]{DialogCell.class, ProfileSearchCell.class}, null, new Drawable[]{Theme.dialogs_scamDrawable, Theme.dialogs_fakeDrawable}, null, Theme.key_chats_draft));
         arrayList.add(new ThemeDescription(recyclerListView, 0, new Class[]{DialogCell.class}, null, new Drawable[]{Theme.dialogs_pinnedDrawable, Theme.dialogs_reorderDrawable}, null, Theme.key_chats_pinnedIcon));
         arrayList.add(new ThemeDescription(recyclerListView, 0, new Class[]{DialogCell.class, ProfileSearchCell.class}, null, new Paint[]{Theme.dialogs_namePaint[0], Theme.dialogs_namePaint[1], Theme.dialogs_searchNamePaint}, null, null, Theme.key_chats_name));
