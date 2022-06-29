@@ -4,3 +4,6 @@ build/
 obj/
 *.iml
 local.properties
+TMessagesProj/.cxx/
+TMessagesProj/config/release.keystore
+secrets.properties
