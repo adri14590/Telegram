@@ -7,3 +7,4 @@ local.properties
 TMessagesProj/.cxx/
 TMessagesProj/config/release.keystore
 secrets.properties
+TMessagesProj/afat/
