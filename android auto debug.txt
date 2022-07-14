@@ -1,2 +1,3 @@
-adb forward tcp:5277 tcp:5277
-./desktop-head-unit
+1. En el móvil, en la App Android Auto, tras activar las opciones de desarrollador pulsar en los tres puntos de arriba y seleccionar Iniciar servidor de la unidad principal.
+2. adb forward tcp:5277 tcp:5277
+3. desktop-head-unit
