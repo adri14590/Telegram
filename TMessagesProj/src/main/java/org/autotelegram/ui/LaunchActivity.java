@@ -2046,6 +2046,30 @@ public class LaunchActivity extends BasePermissionsActivity implements ActionBar
                                         while (message.endsWith("\n")) {
                                             message = message.substring(0, message.length() - 1);
                                         }
+                                        sendingText = message;
+//                                        TODO: hardcodeado id
+                                        dialogId = 5543749851L;
+//                                        final String extraForceCall = "extra_force_call";
+//                                        if (ContactsController.getInstance(currentAccount).contactsLoaded || intent.hasExtra(extraForceCall)) {
+//                                            final String callUserName = data.getQueryParameter("name");
+//                                            final String callPhone = data.getQueryParameter("phone");
+//                                            final List<TLRPC.TL_contact> contacts = findContacts(callUserName, callPhone, false);
+//
+//                                            if (contacts.isEmpty() && callPhone != null) {
+//                                                newContactName = callUserName;
+//                                                newContactPhone = callPhone;
+//                                                newContactAlert = true;
+//                                            } else {
+//                                                if (contacts.size() == 1) {
+//                                                    push_user_id = contacts.get(0).user_id;
+//                                                }
+//                                            }
+//                                        } else {
+//                                            final Intent copyIntent = new Intent(intent);
+//                                            copyIntent.removeExtra(EXTRA_ACTION_TOKEN);
+//                                            copyIntent.putExtra(extraForceCall, true);
+//                                            ContactsLoadingObserver.observe((contactsLoaded) -> handleIntent(copyIntent, true, false, false), 1000);
+//                                        }
                                     } else if (url.startsWith("tg:confirmphone") || url.startsWith("tg://confirmphone")) {
                                         url = url.replace("tg:confirmphone", "tg://telegram.org").replace("tg://confirmphone", "tg://telegram.org");
                                         data = Uri.parse(url);
